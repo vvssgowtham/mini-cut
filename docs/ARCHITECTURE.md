@@ -13,16 +13,19 @@
 
 ## Layout
 
-| Path            | Purpose                                                     |
-| --------------- | ----------------------------------------------------------- |
-| `src/editor/`   | Project model, commands, command bus, undo/redo             |
-| `src/timeline/` | Canvas timeline rendering and interaction                   |
-| `src/media/`    | Playback, probing, export helpers                           |
-| `src/workers/`  | Web Workers (thumbnails, waveform, export)                  |
-| `src/storage/`  | OPFS for media, IndexedDB for project JSON, autosave        |
-| `src/agent/`    | Client side of the AI agent: build context, preview, accept |
-| `server/`       | Fastify API for the agent endpoint                          |
-| `docs/`         | Architecture notes and decisions                            |
+| Path                     | Purpose                                                     |
+| ------------------------ | ----------------------------------------------------------- |
+| `apps/web/src/editor/`   | Project model, commands, command bus, undo/redo             |
+| `apps/web/src/timeline/` | Canvas timeline rendering and interaction                   |
+| `apps/web/src/media/`    | Playback, probing, export helpers                           |
+| `apps/web/src/workers/`  | Web Workers (thumbnails, waveform, export)                  |
+| `apps/web/src/storage/`  | OPFS for media, IndexedDB for project JSON, autosave        |
+| `apps/web/src/agent/`    | Client side of the AI agent: build context, preview, accept |
+| `apps/server/`           | Fastify API (`/api/health` now; agent endpoint in M7)       |
+| `packages/shared/`       | Types and zod schemas used by both web and server           |
+| `docs/`                  | Architecture notes and decisions                            |
+
+The shared package is consumed as TypeScript source (no build step). The server runs with `tsx`.
 
 ## Milestones
 
