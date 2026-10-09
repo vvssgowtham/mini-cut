@@ -9,8 +9,9 @@ milestone plan (M1 to M8).
 
 ## Stack
 
-React 19, TypeScript (strict), Vite, Vitest, oxlint, Prettier. Planned: Web Workers, OPFS, IndexedDB,
-ffmpeg.wasm, a Fastify API for the agent.
+npm workspaces monorepo: React 19 + Vite (`apps/web`), Fastify (`apps/server`), and shared zod schemas
+(`packages/shared`). TypeScript strict throughout, Vitest, oxlint, Prettier. Planned: Web Workers, OPFS,
+IndexedDB, ffmpeg.wasm.
 
 ## Getting started
 
@@ -18,8 +19,10 @@ Requires Node 22+.
 
 ```bash
 npm install
-npm run dev
+npm run dev      # web on :5173, API on :3001 (Vite proxies /api)
 ```
+
+The page shows `API: ok` when the frontend can reach `GET /api/health`.
 
 ## Scripts
 

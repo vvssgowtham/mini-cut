@@ -10,7 +10,7 @@ const isolationHeaders = {
 
 export default defineConfig({
   plugins: [react()],
-  server: { headers: isolationHeaders },
+  server: { headers: isolationHeaders, proxy: { '/api': 'http://localhost:3001' } },
   preview: { headers: isolationHeaders },
-  test: { environment: 'node', include: ['src/**/*.test.ts', 'src/**/*.test.tsx'] },
+  test: { environment: 'jsdom', include: ['src/**/*.test.{ts,tsx}'] },
 })
