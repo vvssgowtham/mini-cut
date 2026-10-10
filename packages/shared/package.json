@@ -11,7 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   },
   "dependencies": {
     "zod": "^4.6.5"
