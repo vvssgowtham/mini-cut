@@ -14,7 +14,7 @@
  * Every op is a plain JSON-serializable object, so M7 can have the LLM emit the same shapes.
  */
 
-import type { Clip, Ms, Project, Track } from './types'
+import { clipEnd, type Clip, type Ms, type Project, type Track } from './types'
 
 export type TrimOp = {
   type: 'trim'
@@ -94,23 +94,205 @@ export type ApplyResult = {
  * Suggested shape: a `switch (op.type)` with a `default` that does an exhaustiveness check
  * (`const _never: never = op`), so adding an op later fails to compile until you handle it.
  */
-export function apply(_project: Project, _op: Op): ApplyResult {
-  throw new Error('not implemented: apply')
+export function apply(project: Project, op: Op): ApplyResult {
+  switch (op.type) {
+    case 'trim': {
+      const track = findTrack(project, op.trackId)
+      const index = findClipIndex(track, op.clipId)
+      const clip = clipAt(track, index)
+
+      // Only reject an empty or inverted window. Do NOT reject a window wider than the clip's
+      // current one: a trim's inverse has to widen back to the original window, so that
+      // restriction would break undo.
+      if (op.sourceOut <= op.sourceIn) {
+        throw new Error(`trim window [${op.sourceIn}, ${op.sourceOut}) is empty or inverted`)
+      }
+
+      const clips = [...track.clips]
+      clips[index] = { ...clip, sourceIn: op.sourceIn, sourceOut: op.sourceOut }
+
+      return {
+        project: replaceTrack(project, { ...track, clips }),
+        inverse: {
+          type: 'trim',
+          trackId: op.trackId,
+          clipId: op.clipId,
+          sourceIn: clip.sourceIn,
+          sourceOut: clip.sourceOut,
+        },
+      }
+    }
+
+    case 'move': {
+      const track = findTrack(project, op.trackId)
+      const index = findClipIndex(track, op.clipId)
+      const clip = clipAt(track, index)
+
+      if (op.start < 0) {
+        throw new Error(`move start ${op.start} is before the start of the timeline`)
+      }
+
+      const clips = [...track.clips]
+      clips[index] = { ...clip, start: op.start }
+
+      return {
+        project: replaceTrack(project, { ...track, clips }),
+        inverse: { type: 'move', trackId: op.trackId, clipId: op.clipId, start: clip.start },
+      }
+    }
+
+    case 'delete': {
+      const track = findTrack(project, op.trackId)
+      const index = findClipIndex(track, op.clipId)
+      const clip = clipAt(track, index)
+
+      const clips = [...track.clips]
+      clips.splice(index, 1)
+
+      return {
+        project: replaceTrack(project, { ...track, clips }),
+        inverse: { type: 'insert', trackId: op.trackId, index, clip },
+      }
+    }
+
+    case 'split': {
+      const track = findTrack(project, op.trackId)
+      const index = findClipIndex(track, op.clipId)
+      const clip = clipAt(track, index)
+      const end = clipEnd(clip)
+
+      if (op.atMs <= clip.start || op.atMs >= end) {
+        throw new Error(`split at ${op.atMs} is outside clip ${clip.id} [${clip.start}, ${end})`)
+      }
+      if (op.leftId === op.rightId) {
+        throw new Error(`split needs two different ids, both are ${op.leftId}`)
+      }
+      if (track.clips.some((existing) => existing.id === op.leftId || existing.id === op.rightId)) {
+        throw new Error(`split id ${op.leftId}/${op.rightId} is already taken on track ${track.id}`)
+      }
+
+      // The timeline offset equals the source offset, so both halves stay in the same media:
+      // left gets source [sourceIn, sourceIn + offset), right keeps the rest, and they meet
+      // exactly at `atMs`.
+      const offset = op.atMs - clip.start
+      const left: Clip = {
+        id: op.leftId,
+        sourceId: clip.sourceId,
+        sourceIn: clip.sourceIn,
+        sourceOut: clip.sourceIn + offset,
+        start: clip.start,
+      }
+      const right: Clip = {
+        id: op.rightId,
+        sourceId: clip.sourceId,
+        sourceIn: clip.sourceIn + offset,
+        sourceOut: clip.sourceOut,
+        start: op.atMs,
+      }
+
+      const clips = [...track.clips]
+      clips.splice(index, 1, left, right)
+
+      return {
+        project: replaceTrack(project, { ...track, clips }),
+        inverse: {
+          type: 'merge',
+          trackId: op.trackId,
+          leftId: op.leftId,
+          rightId: op.rightId,
+          clip,
+        },
+      }
+    }
+
+    case 'insert': {
+      const track = findTrack(project, op.trackId)
+
+      if (!Number.isInteger(op.index) || op.index < 0 || op.index > track.clips.length) {
+        throw new Error(
+          `insert index ${op.index} is outside track ${track.id} (0..${track.clips.length})`,
+        )
+      }
+      if (track.clips.some((existing) => existing.id === op.clip.id)) {
+        throw new Error(`clip ${op.clip.id} already exists on track ${track.id}`)
+      }
+
+      const clips = [...track.clips]
+      clips.splice(op.index, 0, op.clip)
+
+      return {
+        project: replaceTrack(project, { ...track, clips }),
+        inverse: { type: 'delete', trackId: op.trackId, clipId: op.clip.id },
+      }
+    }
+
+    case 'merge': {
+      const track = findTrack(project, op.trackId)
+      const leftIndex = findClipIndex(track, op.leftId)
+      const rightIndex = findClipIndex(track, op.rightId)
+
+      if (rightIndex !== leftIndex + 1) {
+        throw new Error(`merge needs ${op.leftId} and ${op.rightId} to sit next to each other`)
+      }
+
+      // Read the left half before replacing it: its end is where the split happened, so it is
+      // exactly what the inverse `split` op needs for `atMs`.
+      const left = clipAt(track, leftIndex)
+      const clips = [...track.clips]
+      clips.splice(leftIndex, 2, op.clip)
+
+      return {
+        project: replaceTrack(project, { ...track, clips }),
+        inverse: {
+          type: 'split',
+          trackId: op.trackId,
+          clipId: op.clip.id,
+          atMs: clipEnd(left),
+          leftId: op.leftId,
+          rightId: op.rightId,
+        },
+      }
+    }
+
+    default: {
+      // If this line stops compiling, someone added an op without teaching `apply` about it.
+      const _never: never = op
+      throw new Error(`unhandled op: ${JSON.stringify(_never)}`)
+    }
+  }
 }
 
-// --- helpers you will probably want. Implement or delete them; the tests do not call them. ---
+// --- helpers. The tests call none of them; they exist to keep `apply` readable. ---
 
 /** Find a track by id, or throw. */
-export function findTrack(_project: Project, _trackId: string): Track {
-  throw new Error('not implemented: findTrack')
+export function findTrack(project: Project, trackId: string): Track {
+  const track = project.tracks.find((candidate) => candidate.id === trackId)
+  if (!track) throw new Error(`unknown track ${trackId}`)
+  return track
 }
 
 /** Find a clip's index within a track, or throw. */
-export function findClipIndex(_track: Track, _clipId: string): number {
-  throw new Error('not implemented: findClipIndex')
+export function findClipIndex(track: Track, clipId: string): number {
+  const index = track.clips.findIndex((clip) => clip.id === clipId)
+  if (index === -1) throw new Error(`unknown clip ${clipId} on track ${track.id}`)
+  return index
 }
 
-/** Return a new project with one track replaced. */
-export function replaceTrack(_project: Project, _track: Track): Project {
-  throw new Error('not implemented: replaceTrack')
+/**
+ * The clip at `index`. `findClipIndex` already ruled out a missing clip; this check exists only
+ * because `noUncheckedIndexedAccess` makes every array read look possibly empty, and an honest
+ * throw beats an `as Clip` cast.
+ */
+function clipAt(track: Track, index: number): Clip {
+  const clip = track.clips[index]
+  if (!clip) throw new Error(`clip missing at index ${index} on track ${track.id}`)
+  return clip
+}
+
+/** Return a new project with one track replaced. Every other track stays the same object. */
+export function replaceTrack(project: Project, track: Track): Project {
+  return {
+    ...project,
+    tracks: project.tracks.map((candidate) => (candidate.id === track.id ? track : candidate)),
+  }
 }
