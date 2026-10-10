@@ -35,3 +35,16 @@ M6 export, M7 AI agent, M8 performance pass. Tracked as GitHub issues.
 ## Decisions
 
 _Record notable trade-offs here as you make them (date, decision, why)._
+
+**2026-10-10 — Time unit is integer milliseconds.** Frames are frame-accurate and are what pro editors
+use, but variable-frame-rate phone video has no single fps to count in, so frames break on exactly the
+files we must handle. `video.currentTime` is float seconds, so convert at the edges with
+`Math.round(seconds * 1000)`.
+
+**2026-10-10 — Undo stores inverse data, not snapshots.** Each command returns the op that reverses it,
+so memory stays flat however long a session runs; snapshotting the whole project per edit grows without
+bound. The op set is closed under inversion (delete ↔ insert, split ↔ merge, trim ↔ trim, move ↔ move),
+so undo is "apply the inverse" — one code path instead of two.
+
+**2026-10-10 — Clips are stored in insertion order, not sorted by `start`.** Undoing a delete can then
+put the clip back at the exact index it came from. The timeline sorts a copy when it draws.
