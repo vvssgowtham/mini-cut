@@ -36,8 +36,18 @@ describe('msToSeconds', () => {
     expect(secondsToMs(msToSeconds(2345))).toBe(2345)
   })
 
-  it('rejects negative or non-integer milliseconds', () => {
+  /**
+   * Rounds rather than throws: this runs in the playback and render path, and `Ms` is not branded, so
+   * a fractional value from a drag must not crash a seek.
+   */
+  it('rounds a fractional millisecond instead of throwing', () => {
+    expect(msToSeconds(1500.4)).toBe(1.5)
+    expect(msToSeconds(0.6)).toBe(0.001)
+  })
+
+  it('rejects negative or non-finite milliseconds', () => {
     expect(() => msToSeconds(-1)).toThrow()
-    expect(() => msToSeconds(1.5)).toThrow()
+    expect(() => msToSeconds(Number.NaN)).toThrow()
+    expect(() => msToSeconds(Number.POSITIVE_INFINITY)).toThrow()
   })
 })
