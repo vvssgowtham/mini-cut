@@ -17,13 +17,19 @@
 
 import type { Ms } from '../editor/types'
 
+function assertPlayableTime(value: number, label: string): void {
+  if (!Number.isFinite(value)) throw new RangeError(`${label} must be finite, got ${value}`)
+  if (value < 0) throw new RangeError(`${label} must not be negative, got ${value}`)
+}
+
 /**
  * Float seconds to integer milliseconds, rounded to the nearest millisecond.
  *
  * Throws on `NaN`, `Infinity` and negative values.
  */
-export function secondsToMs(_seconds: number): Ms {
-  throw new Error('not implemented: secondsToMs')
+export function secondsToMs(seconds: number): Ms {
+  assertPlayableTime(seconds, 'seconds')
+  return Math.round(seconds * 1000)
 }
 
 /**
@@ -32,6 +38,7 @@ export function secondsToMs(_seconds: number): Ms {
  * A fractional `ms` is rounded to the nearest millisecond rather than rejected (see the note above).
  * Throws on `NaN`, `Infinity` and negative values.
  */
-export function msToSeconds(_ms: Ms): number {
-  throw new Error('not implemented: msToSeconds')
+export function msToSeconds(ms: Ms): number {
+  assertPlayableTime(ms, 'ms')
+  return Math.round(ms) / 1000
 }

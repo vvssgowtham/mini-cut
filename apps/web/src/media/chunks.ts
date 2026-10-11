@@ -12,12 +12,22 @@ export type ByteRange = { start: number; end: number }
 /**
  * Split `totalBytes` into consecutive ranges of at most `chunkBytes` each.
  *
- * Rules the tests check:
- * - the ranges cover `[0, totalBytes)` exactly: no gaps, no overlap
- * - every range is non-empty except that an empty file gives no ranges at all
- * - only the last range may be shorter than `chunkBytes`
- * - throw when `chunkBytes` is not a positive integer, or `totalBytes` is negative or not an integer
+ * The ranges cover `[0, totalBytes)` exactly — no gaps, no overlap — and only the last one may be
+ * shorter than `chunkBytes`. An empty file gives no ranges at all.
+ *
+ * Throws when `chunkBytes` is not a positive integer, or `totalBytes` is negative or not an integer.
  */
-export function planChunks(_totalBytes: number, _chunkBytes: number): ByteRange[] {
-  throw new Error('not implemented: planChunks')
+export function planChunks(totalBytes: number, chunkBytes: number): ByteRange[] {
+  if (!Number.isInteger(totalBytes) || totalBytes < 0) {
+    throw new RangeError(`totalBytes must be a non-negative integer, got ${totalBytes}`)
+  }
+  if (!Number.isInteger(chunkBytes) || chunkBytes <= 0) {
+    throw new RangeError(`chunkBytes must be a positive integer, got ${chunkBytes}`)
+  }
+
+  const ranges: ByteRange[] = []
+  for (let start = 0; start < totalBytes; start += chunkBytes) {
+    ranges.push({ start, end: Math.min(start + chunkBytes, totalBytes) })
+  }
+  return ranges
 }
