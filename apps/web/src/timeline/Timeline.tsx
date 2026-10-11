@@ -1,0 +1,228 @@
+/**
+ * The timeline canvas and its pointer interaction.
+ *
+ * Deliberately thin: the arithmetic lives in `viewport.ts`, the rendering in `draw.ts`, and the
+ * pointer maths in `hitTest.ts`, all of which are unit tested. What is left here is the part that
+ * genuinely needs a browser — element refs, pointer capture, resize, and the animation frame.
+ *
+ * Two rules from `docs/ARCHITECTURE.md` shape this file:
+ *
+ * - **The playhead is not React state.** It lives in a ref and is drawn directly. Putting it in state
+ *   would re-render the tree on every frame of playback.
+ * - **Every edit goes through the command bus.** A drag paints a local preview, then dispatches one
+ *   command on release — so a drag is one undo step, not one per pointermove.
+ *
+ * M3 scope: a single track. Multi-track hit-testing comes with the track UI.
+ */
+
+import { useCallback, useEffect, useRef } from 'react'
+import type { CommandBus } from '../editor/history'
+import { useProject } from '../editor/useProject'
+import { clipEnd, type Clip, type Ms } from '../editor/types'
+import { drawTimeline, CLIP_HEIGHT_PX, CLIP_TOP_PX } from './draw'
+import { hitTest, type Hit } from './hitTest'
+import { panBy, xToTime, zoomAt, type Viewport } from './viewport'
+
+const DEFAULT_HEIGHT_PX = CLIP_TOP_PX * 2 + CLIP_HEIGHT_PX
+const INITIAL_PX_PER_MS = 0.1
+const ZOOM_PER_WHEEL_NOTCH = 1.0015
+
+type DragState = {
+  hit: Hit
+  /** The clip as it was when the drag started; the preview is derived from this, never compounded. */
+  original: Clip
+  grabMs: Ms
+  preview: Clip
+}
+
+export type TimelineProps = {
+  bus: CommandBus
+  heightPx?: number
+}
+
+export function Timeline({ bus, heightPx = DEFAULT_HEIGHT_PX }: TimelineProps) {
+  const project = useProject(bus)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const viewportRef = useRef<Viewport>({ offsetMs: 0, pxPerMs: INITIAL_PX_PER_MS, widthPx: 0 })
+  const playheadRef = useRef<Ms>(0)
+  const dragRef = useRef<DragState | null>(null)
+  const frameRef = useRef<number | null>(null)
+  const projectRef = useRef(project)
+
+  /** Coalesce into one draw per frame: a wheel gesture can fire many events between frames. */
+  const scheduleDraw = useCallback(() => {
+    if (frameRef.current !== null) return
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null
+
+      const canvas = canvasRef.current
+      // `getContext` returns null in jsdom, where the component tests run.
+      const ctx = canvas?.getContext('2d')
+      if (!canvas || !ctx) return
+
+      const drag = dragRef.current
+      const clips = projectRef.current.tracks[0]?.clips ?? []
+
+      drawTimeline(ctx, {
+        viewport: viewportRef.current,
+        clips: drag ? clips.map((c) => (c.id === drag.preview.id ? drag.preview : c)) : clips,
+        playheadMs: playheadRef.current,
+        heightPx,
+        devicePixelRatio: window.devicePixelRatio || 1,
+      })
+    })
+  }, [heightPx])
+
+  // Keep the ref the draw and pointer callbacks read in step, then redraw. Both run after this
+  // effect, so they always see the current project.
+  useEffect(() => {
+    projectRef.current = project
+    scheduleDraw()
+  }, [project, scheduleDraw])
+
+  // Size the backing store to the element, and keep it in step with layout.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1
+      const widthPx = canvas.clientWidth
+      canvas.width = Math.round(widthPx * dpr)
+      canvas.height = Math.round(heightPx * dpr)
+      viewportRef.current = { ...viewportRef.current, widthPx }
+      scheduleDraw()
+    }
+
+    resize()
+    // Absent in jsdom.
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(resize)
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [heightPx, scheduleDraw])
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+    }
+  }, [])
+
+  const localPoint = (event: { clientX: number; clientY: number }) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) }
+  }
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<HTMLCanvasElement>) => {
+      const { x } = localPoint(event)
+      viewportRef.current =
+        event.ctrlKey || event.metaKey
+          ? zoomAt(viewportRef.current, x, ZOOM_PER_WHEEL_NOTCH ** -event.deltaY)
+          : panBy(viewportRef.current, event.deltaX || event.deltaY)
+      scheduleDraw()
+    },
+    [scheduleDraw],
+  )
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const { x, y } = localPoint(event)
+      const viewport = viewportRef.current
+      const clips = projectRef.current.tracks[0]?.clips ?? []
+      const hit = hitTest(viewport, clips, x, y)
+
+      if (!hit) {
+        // Empty space scrubs the playhead.
+        playheadRef.current = Math.max(0, Math.round(xToTime(viewport, x)))
+        scheduleDraw()
+        return
+      }
+
+      const original = clips.find((c) => c.id === hit.clipId)
+      if (!original) return
+
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragRef.current = { hit, original, grabMs: xToTime(viewport, x), preview: original }
+    },
+    [scheduleDraw],
+  )
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const drag = dragRef.current
+      if (!drag) return
+
+      const { x } = localPoint(event)
+      const deltaMs = Math.round(xToTime(viewportRef.current, x) - drag.grabMs)
+      const { original } = drag
+
+      // Always derived from `original`, so the preview cannot drift as the pointer moves.
+      let preview = original
+      if (drag.hit.kind === 'body') {
+        preview = { ...original, start: Math.max(0, original.start + deltaMs) }
+      } else if (drag.hit.kind === 'trim-start') {
+        const sourceIn = Math.min(original.sourceOut - 1, Math.max(0, original.sourceIn + deltaMs))
+        preview = { ...original, sourceIn, start: Math.max(0, original.start + deltaMs) }
+      } else {
+        preview = {
+          ...original,
+          sourceOut: Math.max(original.sourceIn + 1, original.sourceOut + deltaMs),
+        }
+      }
+
+      dragRef.current = { ...drag, preview }
+      scheduleDraw()
+    },
+    [scheduleDraw],
+  )
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const drag = dragRef.current
+      dragRef.current = null
+      if (!drag) return
+
+      event.currentTarget.releasePointerCapture(event.pointerId)
+
+      const trackId = projectRef.current.tracks[0]?.id
+      const { original, preview, hit } = drag
+      // One command for the whole gesture, so one ctrl+Z takes it back.
+      if (trackId && hit.kind === 'body' && preview.start !== original.start) {
+        bus.execute({ type: 'move', trackId, clipId: original.id, start: preview.start })
+      } else if (
+        trackId &&
+        hit.kind !== 'body' &&
+        (preview.sourceIn !== original.sourceIn || preview.sourceOut !== original.sourceOut)
+      ) {
+        bus.execute({
+          type: 'trim',
+          trackId,
+          clipId: original.id,
+          sourceIn: preview.sourceIn,
+          sourceOut: preview.sourceOut,
+        })
+        if (preview.start !== original.start) {
+          bus.execute({ type: 'move', trackId, clipId: original.id, start: preview.start })
+        }
+      }
+      scheduleDraw()
+    },
+    [bus, scheduleDraw],
+  )
+
+  const totalMs = (project.tracks[0]?.clips ?? []).reduce((max, c) => Math.max(max, clipEnd(c)), 0)
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-label={`Timeline, ${(project.tracks[0]?.clips ?? []).length} clips, ${totalMs} ms`}
+      style={{ width: '100%', height: heightPx, display: 'block', touchAction: 'none' }}
+      onWheel={handleWheel}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+    />
+  )
+}
