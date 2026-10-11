@@ -118,11 +118,16 @@ describe('panBy', () => {
 })
 
 describe('visibleClips', () => {
-  const clips = [
-    { id: 'c', start: 20000, durationMs: 1000 }, // far off to the right
-    { id: 'a', start: 0, durationMs: 3000 },
-    { id: 'b', start: 3000, durationMs: 2000 },
-  ]
+  const clip = (id: string, start: number, durationMs: number) => ({
+    id,
+    sourceId: 's1',
+    sourceIn: 0,
+    sourceOut: durationMs,
+    start,
+  })
+
+  // Deliberately not in start order: storage keeps insertion order, drawing needs them sorted.
+  const clips = [clip('c', 20000, 1000), clip('a', 0, 3000), clip('b', 3000, 2000)]
 
   it('drops clips outside the visible range', () => {
     expect(visibleClips(base, clips).map((c) => c.id)).toEqual(['a', 'b'])
