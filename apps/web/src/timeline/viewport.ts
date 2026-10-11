@@ -11,7 +11,7 @@
  *   `devicePixelRatio` scaling belongs in the draw code, not here.
  */
 
-import type { Ms } from '../editor/types'
+import { clipEnd, type Clip, type Ms } from '../editor/types'
 
 export type Viewport = {
   /** Time at the left edge of the canvas. */
@@ -68,14 +68,12 @@ export function panBy(viewport: Viewport, deltaPx: number): Viewport {
  *
  * Drawing every clip is what makes a long timeline stutter, so the draw code asks for this instead.
  * Clips are stored in insertion order (see `editor/types.ts`), so this sorts by `start` for drawing —
- * on a copy, never in place.
+ * on a copy, never in place. A clip counts as visible when it overlaps the range; merely touching an
+ * edge does not, because the range is half-open.
  */
-export function visibleClips<T extends { start: Ms; durationMs: Ms }>(
-  viewport: Viewport,
-  clips: readonly T[],
-): T[] {
+export function visibleClips(viewport: Viewport, clips: readonly Clip[]): Clip[] {
   const { startMs, endMs } = visibleRange(viewport)
   return clips
-    .filter((clip) => clip.start < endMs && clip.start + clip.durationMs > startMs)
+    .filter((clip) => clip.start < endMs && clipEnd(clip) > startMs)
     .sort((a, b) => a.start - b.start)
 }
