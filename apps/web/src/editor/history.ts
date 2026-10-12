@@ -44,6 +44,20 @@ export class CommandBus {
   }
 
   /**
+   * Swap in a different project and throw away the history.
+   *
+   * For opening a file or restoring a session — not for editing. The history goes because its
+   * inverses describe a project that is no longer loaded: undoing a trim from the previous file
+   * against this one would reference clip ids that do not exist here.
+   */
+  replace(project: Project): void {
+    this.#project = project
+    this.#undoStack = []
+    this.#redoStack = []
+    this.#notify()
+  }
+
+  /**
    * Apply one command, push it onto the undo stack, and CLEAR THE REDO STACK.
    *
    * Clearing redo is the part people forget. Once you undo and then make a different edit, the

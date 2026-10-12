@@ -1,44 +1,45 @@
+/**
+ * App-level tests.
+ *
+ * jsdom has no IndexedDB, no OPFS and no canvas context, so what can be checked here is the shell:
+ * that it mounts, shows the right affordances, and does not fall over when none of those browser
+ * APIs exist. Importing, drawing and persistence need a real browser.
+ */
+
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import App from './App'
 
-function mockFetch(response: Partial<Response> | Error) {
-  const fn =
-    response instanceof Error
-      ? vi.fn().mockRejectedValue(response)
-      : vi.fn().mockResolvedValue(response)
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
+afterEach(cleanup)
 
-afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-})
-
-describe('App API health check', () => {
-  it('calls /api/health and shows ok when the response matches the schema', async () => {
-    const fetchMock = mockFetch({ ok: true, json: async () => ({ status: 'ok' }) })
-
-    render(<App />)
-
-    expect(await screen.findByText('API: ok')).toBeTruthy()
-    expect(fetchMock).toHaveBeenCalledWith('/api/health', expect.anything())
+describe('shell', () => {
+  it('renders without the browser APIs it would normally use', () => {
+    expect(() => render(<App />)).not.toThrow()
+    expect(screen.getByRole('heading', { name: 'Mini Cut' })).toBeTruthy()
   })
 
-  it('shows down when the request fails', async () => {
-    mockFetch(new Error('network'))
-
+  it('offers an import control', () => {
     render(<App />)
 
-    expect(await screen.findByText('API: down')).toBeTruthy()
+    expect(screen.getByLabelText('Import video')).toBeTruthy()
   })
 
-  it('shows down when the body does not match the schema', async () => {
-    mockFetch({ ok: true, json: async () => ({ status: 'nope' }) })
-
+  it('prompts for media before anything is imported', () => {
     render(<App />)
 
-    expect(await screen.findByText('API: down')).toBeTruthy()
+    expect(screen.getByText(/import a video to begin/i)).toBeTruthy()
+  })
+
+  it('starts with an empty timeline', () => {
+    render(<App />)
+
+    expect(screen.getByText('0 clips')).toBeTruthy()
+  })
+
+  it('disables undo and redo until something is edited', () => {
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Undo' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Redo' }).hasAttribute('disabled')).toBe(true)
   })
 })

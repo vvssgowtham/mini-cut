@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Command, DeleteOp, MoveOp, TrimOp } from './commands'
 import { CommandBus } from './history'
+import type { Project } from './types'
 import { clipIds, getClip, makeProject } from './fixtures'
 
 const trimA: TrimOp = { type: 'trim', trackId: 't1', clipId: 'a', sourceIn: 1500, sourceOut: 3000 }
@@ -181,5 +182,53 @@ describe('subscribe', () => {
     bus.undo()
 
     expect(listener).not.toHaveBeenCalled()
+  })
+})
+
+describe('replace', () => {
+  const other: Project = {
+    version: 1,
+    durationMs: 9000,
+    tracks: [
+      { id: 't9', clips: [{ id: 'z', sourceId: 's2', sourceIn: 0, sourceOut: 900, start: 0 }] },
+    ],
+  }
+
+  it('swaps in the new project', () => {
+    const bus = new CommandBus(makeProject())
+    bus.replace(other)
+
+    expect(bus.project).toEqual(other)
+  })
+
+  it('throws away the history, since it describes a project that is no longer loaded', () => {
+    const bus = new CommandBus(makeProject())
+    bus.execute(trimA)
+    bus.undo()
+    expect(bus.canRedo).toBe(true)
+
+    bus.replace(other)
+
+    expect(bus.canUndo).toBe(false)
+    expect(bus.canRedo).toBe(false)
+  })
+
+  it('notifies listeners', () => {
+    const bus = new CommandBus(makeProject())
+    const listener = vi.fn()
+    bus.subscribe(listener)
+
+    bus.replace(other)
+
+    expect(listener).toHaveBeenCalledWith(other)
+  })
+
+  it('accepts edits against the new project afterwards', () => {
+    const bus = new CommandBus(makeProject())
+    bus.replace(other)
+    bus.execute({ type: 'move', trackId: 't9', clipId: 'z', start: 500 })
+
+    expect(getClip(bus.project, 't9', 'z').start).toBe(500)
+    expect(bus.canUndo).toBe(true)
   })
 })
