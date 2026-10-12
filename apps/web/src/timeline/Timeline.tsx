@@ -20,11 +20,11 @@ import type { CommandBus } from '../editor/history'
 import { useProject } from '../editor/useProject'
 import type { PlayheadStore } from '../media/playhead'
 import { clipEnd, type Clip, type Ms } from '../editor/types'
-import { drawTimeline, CLIP_HEIGHT_PX, CLIP_TOP_PX } from './draw'
+import { drawTimeline, TIMELINE_HEIGHT_PX } from './draw'
 import { hitTest, type Hit } from './hitTest'
 import { panBy, xToTime, zoomAt, type Viewport } from './viewport'
 
-const DEFAULT_HEIGHT_PX = CLIP_TOP_PX * 2 + CLIP_HEIGHT_PX
+const DEFAULT_HEIGHT_PX = TIMELINE_HEIGHT_PX
 const INITIAL_PX_PER_MS = 0.1
 const ZOOM_PER_WHEEL_NOTCH = 1.0015
 
@@ -40,14 +40,24 @@ export type TimelineProps = {
   bus: CommandBus
   /** Shared with the video player, so scrubbing here seeks the preview and vice versa. */
   playhead: PlayheadStore
+  selectedClipId: string | null
+  onSelect: (clipId: string | null) => void
   heightPx?: number
 }
 
-export function Timeline({ bus, playhead, heightPx = DEFAULT_HEIGHT_PX }: TimelineProps) {
+export function Timeline({
+  bus,
+  playhead,
+  selectedClipId,
+  onSelect,
+  heightPx = DEFAULT_HEIGHT_PX,
+}: TimelineProps) {
   const project = useProject(bus)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<Viewport>({ offsetMs: 0, pxPerMs: INITIAL_PX_PER_MS, widthPx: 0 })
   const dragRef = useRef<DragState | null>(null)
+  const hoveredRef = useRef<string | null>(null)
+  const selectedRef = useRef(selectedClipId)
   const frameRef = useRef<number | null>(null)
   const projectRef = useRef(project)
 
@@ -71,6 +81,8 @@ export function Timeline({ bus, playhead, heightPx = DEFAULT_HEIGHT_PX }: Timeli
         playheadMs: playhead.ms,
         heightPx,
         devicePixelRatio: window.devicePixelRatio || 1,
+        selectedClipId: selectedRef.current,
+        hoveredClipId: hoveredRef.current,
       })
     })
   }, [heightPx, playhead])
@@ -81,6 +93,11 @@ export function Timeline({ bus, playhead, heightPx = DEFAULT_HEIGHT_PX }: Timeli
     projectRef.current = project
     scheduleDraw()
   }, [project, scheduleDraw])
+
+  useEffect(() => {
+    selectedRef.current = selectedClipId
+    scheduleDraw()
+  }, [selectedClipId, scheduleDraw])
 
   // Size the backing store to the element, and keep it in step with layout.
   useEffect(() => {
@@ -138,7 +155,8 @@ export function Timeline({ bus, playhead, heightPx = DEFAULT_HEIGHT_PX }: Timeli
       const hit = hitTest(viewport, clips, x, y)
 
       if (!hit) {
-        // Empty space scrubs the playhead.
+        // Empty space scrubs the playhead and drops the selection.
+        onSelect(null)
         playhead.set(xToTime(viewport, x))
         scheduleDraw()
         return
@@ -147,16 +165,28 @@ export function Timeline({ bus, playhead, heightPx = DEFAULT_HEIGHT_PX }: Timeli
       const original = clips.find((c) => c.id === hit.clipId)
       if (!original) return
 
+      onSelect(hit.clipId)
+
       event.currentTarget.setPointerCapture(event.pointerId)
       dragRef.current = { hit, original, grabMs: xToTime(viewport, x), preview: original }
     },
-    [playhead, scheduleDraw],
+    [onSelect, playhead, scheduleDraw],
   )
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       const drag = dragRef.current
-      if (!drag) return
+      if (!drag) {
+        // Hover drives the trim-handle affordance, so it only redraws when it actually changes.
+        const { x: hx, y: hy } = localPoint(event)
+        const clips = projectRef.current.tracks[0]?.clips ?? []
+        const next = hitTest(viewportRef.current, clips, hx, hy)?.clipId ?? null
+        if (next !== hoveredRef.current) {
+          hoveredRef.current = next
+          scheduleDraw()
+        }
+        return
+      }
 
       const { x } = localPoint(event)
       const deltaMs = Math.round(xToTime(viewportRef.current, x) - drag.grabMs)
@@ -228,6 +258,11 @@ export function Timeline({ bus, playhead, heightPx = DEFAULT_HEIGHT_PX }: Timeli
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onPointerLeave={() => {
+        if (hoveredRef.current === null) return
+        hoveredRef.current = null
+        scheduleDraw()
+      }}
     />
   )
 }

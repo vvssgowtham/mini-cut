@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CommandBus } from './editor/history'
-import type { Project } from './editor/types'
+import { clipEnd, type Project } from './editor/types'
 import { useProject } from './editor/useProject'
 import { PlayheadStore } from './media/playhead'
 import { probeDuration } from './media/probe'
@@ -27,6 +27,7 @@ import { RestoreError } from './storage/restore'
 import { Timeline } from './timeline/Timeline'
 import { ImportButton } from './ui/ImportButton'
 import { Timecode } from './ui/Timecode'
+import { Transport } from './ui/Transport'
 
 const emptyProject = (): Project => ({
   version: 1,
@@ -47,6 +48,7 @@ export default function App() {
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [notice, setNotice] = useState<string | null>(null)
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   /** Object URLs are revoked on replace and on unmount; otherwise each import pins another file. */
   const sourceUrlRef = useRef<string | null>(null)
 
@@ -125,14 +127,28 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
-      event.preventDefault()
-      if (event.shiftKey) bus.redo()
-      else bus.undo()
+      const target = event.target as HTMLElement | null
+      // Never steal a key from a field the user is typing in.
+      if (target?.closest('input, textarea, [contenteditable]')) return
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) bus.redo()
+        else bus.undo()
+        return
+      }
+
+      if ((event.key === 'Backspace' || event.key === 'Delete') && selectedClipId) {
+        const trackId = bus.project.tracks[0]?.id
+        if (!trackId) return
+        event.preventDefault()
+        bus.execute({ type: 'delete', trackId, clipId: selectedClipId })
+        setSelectedClipId(null)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [bus])
+  }, [bus, selectedClipId])
 
   const handleImported = useCallback(
     async (opfsName: string) => {
@@ -161,6 +177,7 @@ export default function App() {
         ],
       })
       playhead.set(0)
+      setSelectedClipId(null)
       void requestPersistentStorage()
     },
     [bus, playhead, showSource],
@@ -168,6 +185,7 @@ export default function App() {
 
   const clips = project.tracks[0]?.clips ?? []
   const cutDurationMs = clips.reduce((sum, clip) => sum + (clip.sourceOut - clip.sourceIn), 0)
+  const timelineEndMs = clips.reduce((end, clip) => Math.max(end, clipEnd(clip)), 0)
 
   return (
     <div className="app">
@@ -186,7 +204,12 @@ export default function App() {
       </section>
 
       <section className="zone timeline" aria-label="Timeline">
-        <Timeline bus={bus} playhead={playhead} />
+        <Timeline
+          bus={bus}
+          playhead={playhead}
+          selectedClipId={selectedClipId}
+          onSelect={setSelectedClipId}
+        />
       </section>
 
       <footer className="zone">
@@ -197,12 +220,31 @@ export default function App() {
         )}
 
         <div className="transport">
+          <Transport playhead={playhead} durationMs={timelineEndMs} disabled={clips.length === 0} />
+
+          <span className="divider" aria-hidden="true" />
+
           <button type="button" onClick={() => bus.undo()} disabled={!bus.canUndo}>
             Undo
           </button>
           <button type="button" onClick={() => bus.redo()} disabled={!bus.canRedo}>
             Redo
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              const trackId = bus.project.tracks[0]?.id
+              if (!trackId || !selectedClipId) return
+              bus.execute({ type: 'delete', trackId, clipId: selectedClipId })
+              setSelectedClipId(null)
+            }}
+            disabled={!selectedClipId}
+          >
+            Delete clip
+          </button>
+
+          <span className="divider" aria-hidden="true" />
+
           <ImportButton onImported={handleImported} />
 
           <span className="readout">
