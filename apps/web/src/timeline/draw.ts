@@ -19,11 +19,12 @@ export type TimelineTheme = {
   playhead: string
 }
 
+/** Mirrors the tokens in `index.css`; the canvas cannot read CSS variables. */
 export const defaultTheme: TimelineTheme = {
-  background: '#1a1a1e',
-  clipFill: '#3b5bdb',
-  clipStroke: '#748ffc',
-  playhead: '#ff6b6b',
+  background: '#171b1e',
+  clipFill: '#232b31',
+  clipStroke: '#3c474f',
+  playhead: '#f0a848',
 }
 
 /** Vertical layout, in CSS pixels. */

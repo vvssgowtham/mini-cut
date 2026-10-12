@@ -27,13 +27,13 @@ describe('shell', () => {
   it('prompts for media before anything is imported', () => {
     render(<App />)
 
-    expect(screen.getByText(/import a video to begin/i)).toBeTruthy()
+    expect(screen.getByText(/import a video to start cutting/i)).toBeTruthy()
   })
 
   it('starts with an empty timeline', () => {
     render(<App />)
 
-    expect(screen.getByText('0 clips')).toBeTruthy()
+    expect(screen.getByLabelText('0 clips')).toBeTruthy()
   })
 
   it('disables undo and redo until something is edited', () => {

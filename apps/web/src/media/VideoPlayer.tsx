@@ -19,10 +19,9 @@ export type VideoPlayerProps = {
   /** Object URL from `openOpfsAsUrl`, or null before anything is imported. */
   src: string | null
   playhead: PlayheadStore
-  heightPx?: number
 }
 
-export function VideoPlayer({ src, playhead, heightPx = 280 }: VideoPlayerProps) {
+export function VideoPlayer({ src, playhead }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   /** The last position this component pushed into the store, so its echo can be ignored. */
   const lastPushedRef = useRef<Ms>(-1)
@@ -77,29 +76,11 @@ export function VideoPlayer({ src, playhead, heightPx = 280 }: VideoPlayerProps)
 
   if (!src) {
     return (
-      <div
-        style={{
-          height: heightPx,
-          display: 'grid',
-          placeItems: 'center',
-          background: '#111114',
-          color: '#8a8a94',
-          borderRadius: 8,
-        }}
-      >
-        No media yet — import a video to begin.
-      </div>
+      <p className="viewer-empty">
+        Import a video to start cutting. It stays on this device — nothing is uploaded.
+      </p>
     )
   }
 
-  return (
-    <video
-      ref={videoRef}
-      src={src}
-      controls
-      preload="metadata"
-      onTimeUpdate={onTimeUpdate}
-      style={{ width: '100%', height: heightPx, background: '#000', borderRadius: 8 }}
-    />
-  )
+  return <video ref={videoRef} src={src} controls preload="metadata" onTimeUpdate={onTimeUpdate} />
 }

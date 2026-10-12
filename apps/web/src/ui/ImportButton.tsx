@@ -58,7 +58,7 @@ export function ImportButton({ onImported, disabled }: ImportButtonProps) {
   }
 
   return (
-    <div>
+    <div className="import">
       <input
         ref={inputRef}
         type="file"
@@ -72,17 +72,21 @@ export function ImportButton({ onImported, disabled }: ImportButtonProps) {
       />
 
       {state.status === 'copying' && (
-        <span style={{ marginLeft: 12 }}>
-          <progress value={state.progress.copiedBytes} max={state.progress.totalBytes || 1} />{' '}
-          <span>{percent(state.progress)}%</span>{' '}
+        <span className="copying">
+          <progress
+            aria-label="Copying video"
+            value={state.progress.copiedBytes}
+            max={state.progress.totalBytes || 1}
+          />
+          <b>{percent(state.progress)}%</b>
           <button type="button" onClick={() => abortRef.current?.abort()}>
-            Cancel
+            Stop copying
           </button>
         </span>
       )}
 
       {state.status === 'failed' && (
-        <span role="alert" style={{ marginLeft: 12, color: '#ff6b6b' }}>
+        <span role="alert" className="alert">
           {state.message}
         </span>
       )}
