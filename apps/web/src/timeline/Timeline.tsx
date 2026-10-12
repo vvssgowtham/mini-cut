@@ -15,13 +15,14 @@
  * M3 scope: a single track. Multi-track hit-testing comes with the track UI.
  */
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CommandBus } from '../editor/history'
 import { useProject } from '../editor/useProject'
 import type { PlayheadStore } from '../media/playhead'
-import { clipEnd, type Clip, type Ms } from '../editor/types'
+import type { Clip, Ms } from '../editor/types'
 import { drawTimeline, TIMELINE_HEIGHT_PX } from './draw'
 import { hitTest, type Hit } from './hitTest'
+import { applyKeyAction, keyToAction } from './keyboard'
 import { panBy, xToTime, zoomAt, type Viewport } from './viewport'
 
 const DEFAULT_HEIGHT_PX = TIMELINE_HEIGHT_PX
@@ -60,6 +61,9 @@ export function Timeline({
   const selectedRef = useRef(selectedClipId)
   const frameRef = useRef<number | null>(null)
   const projectRef = useRef(project)
+  // Announced to screen readers: a canvas has no accessible structure of its own, so without this
+  // a keyboard user has no way to know what is selected or what an edit did.
+  const [announcement, setAnnouncement] = useState('')
 
   /** Coalesce into one draw per frame: a wheel gesture can fire many events between frames. */
   const scheduleDraw = useCallback(() => {
@@ -138,6 +142,34 @@ export function Timeline({
     const rect = canvasRef.current?.getBoundingClientRect()
     return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) }
   }
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+      const action = keyToAction(event)
+      if (!action) return
+      event.preventDefault()
+
+      const currentProject = projectRef.current
+      const result = applyKeyAction(action, currentProject, selectedRef.current, playhead.ms)
+
+      if (result.selection !== undefined) onSelect(result.selection)
+      // One group, so a two-command trim is a single undo step.
+      if (result.commands.length > 0) bus.executeGroup(result.commands)
+
+      if (result.message) {
+        setAnnouncement(result.message)
+        return
+      }
+      if (result.selection) {
+        const clips = currentProject.tracks[0]?.clips ?? []
+        const index = clips.findIndex((clip) => clip.id === result.selection)
+        setAnnouncement(`Clip ${index + 1} of ${clips.length} selected`)
+      } else if (result.commands.length > 0) {
+        setAnnouncement(`${action.type.replace('-', ' ')} applied`)
+      }
+    },
+    [bus, onSelect, playhead],
+  )
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLCanvasElement>) => {
@@ -250,23 +282,29 @@ export function Timeline({
     [bus, scheduleDraw],
   )
 
-  const totalMs = (project.tracks[0]?.clips ?? []).reduce((max, c) => Math.max(max, clipEnd(c)), 0)
-
   return (
-    <canvas
-      ref={canvasRef}
-      aria-label={`Timeline, ${(project.tracks[0]?.clips ?? []).length} clips, ${totalMs} ms`}
-      style={{ width: '100%', height: heightPx, display: 'block', touchAction: 'none' }}
-      onWheel={handleWheel}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      onPointerLeave={() => {
-        if (hoveredRef.current === null) return
-        hoveredRef.current = null
-        scheduleDraw()
-      }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        tabIndex={0}
+        role="application"
+        onKeyDown={handleKeyDown}
+        aria-label={`Timeline, ${(project.tracks[0]?.clips ?? []).length} clips. Arrow keys select, alt and arrows nudge, bracket keys trim to the playhead, S splits, delete removes.`}
+        style={{ width: '100%', height: heightPx, display: 'block', touchAction: 'none' }}
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onPointerLeave={() => {
+          if (hoveredRef.current === null) return
+          hoveredRef.current = null
+          scheduleDraw()
+        }}
+      />
+      <span className="sr-only" role="status">
+        {announcement}
+      </span>
+    </>
   )
 }
