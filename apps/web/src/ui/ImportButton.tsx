@@ -59,17 +59,22 @@ export function ImportButton({ onImported, disabled }: ImportButtonProps) {
 
   return (
     <div className="import">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="video/*"
-        aria-label="Import video"
-        disabled={disabled || state.status === 'copying'}
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) void handleFile(file)
-        }}
-      />
+      {/* A real input, visually hidden behind its own label: the native control prints "No file
+          chosen" beside itself, which cannot be styled and reads as unfinished next to real buttons.
+          The label keeps it clickable and focusable. */}
+      <label className="import-label">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="video/*"
+          disabled={disabled || state.status === 'copying'}
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) void handleFile(file)
+          }}
+        />
+        <span>Import video</span>
+      </label>
 
       {state.status === 'copying' && (
         <span className="copying">

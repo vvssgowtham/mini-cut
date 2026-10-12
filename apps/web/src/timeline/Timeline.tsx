@@ -127,6 +127,10 @@ export function Timeline({
   useEffect(() => {
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+      // Must be cleared, not just cancelled. StrictMode mounts, unmounts and remounts in dev, and a
+      // stale id left here makes scheduleDraw's guard early-return forever: the canvas never draws
+      // again. jsdom cannot catch this, because getContext returns null there.
+      frameRef.current = null
     }
   }, [])
 
