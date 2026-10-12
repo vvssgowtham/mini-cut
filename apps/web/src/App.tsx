@@ -26,6 +26,7 @@ import {
   saveProject,
 } from './storage/db'
 import { openOpfsAsUrl, revokeOpfsUrl } from './storage/opfs'
+import { timelineEnd } from './media/timelineMap'
 import { RestoreError } from './storage/restore'
 import { Timeline } from './timeline/Timeline'
 import { ExportButton } from './ui/ExportButton'
@@ -50,7 +51,9 @@ export default function App() {
   const [playback] = useState(() => new PlaybackStore())
   const project = useProject(bus)
 
-  const [sourceUrl, setSourceUrl] = useState<string | null>(null)
+  // One object URL per imported file. A single url would mean a second import replaced the first,
+  // which is exactly what used to happen.
+  const [sources, setSources] = useState<ReadonlyMap<string, string>>(new Map())
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [notice, setNotice] = useState<string | null>(null)
   const [online, setOnline] = useState(() => navigator.onLine)
@@ -58,18 +61,28 @@ export default function App() {
   // React, and a stale enabled/disabled button is worse than the work of checking again.
   const [playheadTick, setPlayheadTick] = useState(0)
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
-  /** Object URLs are revoked on replace and on unmount; otherwise each import pins another file. */
-  const sourceUrlRef = useRef<string | null>(null)
+  /** Revoked on unmount; each createObjectURL pins its file for the life of the document. */
+  const sourcesRef = useRef<ReadonlyMap<string, string>>(sources)
 
-  const showSource = useCallback((url: string | null) => {
-    if (sourceUrlRef.current) revokeOpfsUrl(sourceUrlRef.current)
-    sourceUrlRef.current = url
-    setSourceUrl(url)
+  const addSource = useCallback(async (sourceId: string) => {
+    const url = await openOpfsAsUrl(sourceId)
+    setSources((current) => {
+      if (current.has(sourceId)) {
+        // Already open: drop the duplicate rather than leaking it.
+        revokeOpfsUrl(url)
+        return current
+      }
+      return new Map(current).set(sourceId, url)
+    })
   }, [])
 
   useEffect(() => {
+    sourcesRef.current = sources
+  }, [sources])
+
+  useEffect(() => {
     return () => {
-      if (sourceUrlRef.current) revokeOpfsUrl(sourceUrlRef.current)
+      for (const url of sourcesRef.current.values()) revokeOpfsUrl(url)
     }
   }, [])
 
@@ -84,8 +97,10 @@ export default function App() {
         if (cancelled || !restored) return
         bus.replace(restored)
 
-        const sourceId = restored.tracks[0]?.clips[0]?.sourceId
-        if (sourceId) showSource(await openOpfsAsUrl(sourceId))
+        const sourceIds = new Set(
+          restored.tracks.flatMap((track) => track.clips.map((clip) => clip.sourceId)),
+        )
+        for (const sourceId of sourceIds) await addSource(sourceId)
       } catch (error) {
         // A save from a newer build is kept, not overwritten: the user can reopen it in the tab
         // that wrote it. Anything else is reported and left alone.
@@ -100,7 +115,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [bus, showSource])
+  }, [addSource, bus])
 
   // Autosave. Flushed on hide rather than on unload: a backgrounded tab can be discarded without
   // ever firing unload, and pagehide/visibilitychange are the events that actually run.
@@ -186,34 +201,37 @@ export default function App() {
   const handleImported = useCallback(
     async (opfsName: string) => {
       setNotice(null)
-      const url = await openOpfsAsUrl(opfsName)
-      showSource(url)
+      await addSource(opfsName)
 
-      const durationMs = await probeDuration(url)
-      // A fresh import replaces the project outright, so its undo history goes with it.
-      bus.replace({
-        version: 1,
-        durationMs,
-        tracks: [
-          {
-            id: 't1',
-            clips: [
-              {
-                id: crypto.randomUUID(),
-                sourceId: opfsName,
-                sourceIn: 0,
-                sourceOut: durationMs,
-                start: 0,
-              },
-            ],
-          },
-        ],
-      })
-      playhead.set(0)
-      setSelectedClipId(null)
+      const url = await openOpfsAsUrl(opfsName)
+      let durationMs: number
+      try {
+        durationMs = await probeDuration(url)
+      } finally {
+        revokeOpfsUrl(url)
+      }
+
+      const current = bus.project
+      const track = current.tracks[0]
+      if (!track) return
+
+      // Append after whatever is already there, as an insert rather than a replace: a second
+      // import adds to the cut instead of discarding the first one and its undo history.
+      const start = timelineEnd(track.clips)
+      const clip = {
+        id: crypto.randomUUID(),
+        sourceId: opfsName,
+        sourceIn: 0,
+        sourceOut: durationMs,
+        start,
+      }
+
+      bus.execute({ type: 'insert', trackId: track.id, index: track.clips.length, clip })
+      playhead.set(start)
+      setSelectedClipId(clip.id)
       void requestPersistentStorage()
     },
-    [bus, playhead, showSource],
+    [addSource, bus, playhead],
   )
 
   const clips = project.tracks[0]?.clips ?? []
@@ -227,7 +245,7 @@ export default function App() {
     <div className="app">
       <header className="zone masthead">
         <h1 className="wordmark">Mini Cut</h1>
-        <Timecode playhead={playhead} idle={!sourceUrl} />
+        <Timecode playhead={playhead} idle={clips.length === 0} />
         <span className="state" data-tone={saveState === 'error' ? 'error' : undefined}>
           {saveState === 'saving' && 'Saving'}
           {saveState === 'saved' && (online ? 'Saved' : 'Saved on this device')}
@@ -237,7 +255,7 @@ export default function App() {
       </header>
 
       <section className="zone viewer">
-        <VideoPlayer src={sourceUrl} playhead={playhead} playback={playback} />
+        <VideoPlayer clips={clips} sources={sources} playhead={playhead} playback={playback} />
       </section>
 
       <section className="zone timeline" aria-label="Timeline">
