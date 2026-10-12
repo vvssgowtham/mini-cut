@@ -25,6 +25,7 @@ import {
 import { openOpfsAsUrl, revokeOpfsUrl } from './storage/opfs'
 import { RestoreError } from './storage/restore'
 import { Timeline } from './timeline/Timeline'
+import { ExportButton } from './ui/ExportButton'
 import { ImportButton } from './ui/ImportButton'
 import { Timecode } from './ui/Timecode'
 import { Transport } from './ui/Transport'
@@ -246,6 +247,7 @@ export default function App() {
           <span className="divider" aria-hidden="true" />
 
           <ImportButton onImported={handleImported} />
+          <ExportButton project={project} disabled={clips.length === 0} />
 
           <span className="readout">
             <span aria-label={`${clips.length} ${clips.length === 1 ? 'clip' : 'clips'}`}>
