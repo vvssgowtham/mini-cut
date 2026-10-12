@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AgentPanel } from './agent/AgentPanel'
 import { CommandBus } from './editor/history'
 import { clipEnd, type Project } from './editor/types'
 import { useProject } from './editor/useProject'
@@ -210,6 +211,10 @@ export default function App() {
           selectedClipId={selectedClipId}
           onSelect={setSelectedClipId}
         />
+      </section>
+
+      <section className="zone">
+        <AgentPanel bus={bus} project={project} disabled={clips.length === 0} />
       </section>
 
       <footer className="zone">
