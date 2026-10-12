@@ -9,11 +9,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CommandBus } from './editor/history'
-import type { Project } from './editor/types'
+import { clipEnd, type Project } from './editor/types'
 import { useProject } from './editor/useProject'
 import { PlayheadStore } from './media/playhead'
 import { probeDuration } from './media/probe'
 import { VideoPlayer } from './media/VideoPlayer'
+import { formatDuration } from './media/timecode'
 import { startAutosave } from './storage/autosave'
 import {
   CURRENT_PROJECT_ID,
@@ -25,6 +26,8 @@ import { openOpfsAsUrl, revokeOpfsUrl } from './storage/opfs'
 import { RestoreError } from './storage/restore'
 import { Timeline } from './timeline/Timeline'
 import { ImportButton } from './ui/ImportButton'
+import { Timecode } from './ui/Timecode'
+import { Transport } from './ui/Transport'
 
 const emptyProject = (): Project => ({
   version: 1,
@@ -45,6 +48,7 @@ export default function App() {
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [notice, setNotice] = useState<string | null>(null)
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   /** Object URLs are revoked on replace and on unmount; otherwise each import pins another file. */
   const sourceUrlRef = useRef<string | null>(null)
 
@@ -123,14 +127,28 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
-      event.preventDefault()
-      if (event.shiftKey) bus.redo()
-      else bus.undo()
+      const target = event.target as HTMLElement | null
+      // Never steal a key from a field the user is typing in.
+      if (target?.closest('input, textarea, [contenteditable]')) return
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) bus.redo()
+        else bus.undo()
+        return
+      }
+
+      if ((event.key === 'Backspace' || event.key === 'Delete') && selectedClipId) {
+        const trackId = bus.project.tracks[0]?.id
+        if (!trackId) return
+        event.preventDefault()
+        bus.execute({ type: 'delete', trackId, clipId: selectedClipId })
+        setSelectedClipId(null)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [bus])
+  }, [bus, selectedClipId])
 
   const handleImported = useCallback(
     async (opfsName: string) => {
@@ -159,58 +177,91 @@ export default function App() {
         ],
       })
       playhead.set(0)
+      setSelectedClipId(null)
       void requestPersistentStorage()
     },
     [bus, playhead, showSource],
   )
 
-  const clipCount = project.tracks[0]?.clips.length ?? 0
+  const clips = project.tracks[0]?.clips ?? []
+  const cutDurationMs = clips.reduce((sum, clip) => sum + (clip.sourceOut - clip.sourceIn), 0)
+  const timelineEndMs = clips.reduce((end, clip) => Math.max(end, clipEnd(clip)), 0)
 
   return (
-    <main
-      style={{ padding: 20, fontFamily: 'system-ui, sans-serif', maxWidth: 1100, margin: '0 auto' }}
-    >
-      <header style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
-        <h1 style={{ margin: 0 }}>Mini Cut</h1>
-        <span style={{ color: '#8a8a94', fontSize: 14 }}>
-          {saveState === 'saving' && 'Saving…'}
+    <div className="app">
+      <header className="zone masthead">
+        <h1 className="wordmark">Mini Cut</h1>
+        <Timecode playhead={playhead} idle={!sourceUrl} />
+        <span className="state" data-tone={saveState === 'error' ? 'error' : undefined}>
+          {saveState === 'saving' && 'Saving'}
           {saveState === 'saved' && 'Saved'}
-          {saveState === 'error' && 'Save failed'}
+          {saveState === 'error' && 'Not saved'}
         </span>
       </header>
 
-      <section style={{ margin: '16px 0' }}>
-        <ImportButton onImported={handleImported} />
+      <section className="zone viewer">
+        <VideoPlayer src={sourceUrl} playhead={playhead} />
       </section>
 
-      {notice && (
-        <p role="alert" style={{ color: '#ff6b6b' }}>
-          {notice}
+      <section className="zone timeline" aria-label="Timeline">
+        <Timeline
+          bus={bus}
+          playhead={playhead}
+          selectedClipId={selectedClipId}
+          onSelect={setSelectedClipId}
+        />
+      </section>
+
+      <footer className="zone">
+        {notice && (
+          <p role="alert" className="alert">
+            {notice}
+          </p>
+        )}
+
+        <div className="transport">
+          <Transport playhead={playhead} durationMs={timelineEndMs} disabled={clips.length === 0} />
+
+          <span className="divider" aria-hidden="true" />
+
+          <button type="button" onClick={() => bus.undo()} disabled={!bus.canUndo}>
+            Undo
+          </button>
+          <button type="button" onClick={() => bus.redo()} disabled={!bus.canRedo}>
+            Redo
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const trackId = bus.project.tracks[0]?.id
+              if (!trackId || !selectedClipId) return
+              bus.execute({ type: 'delete', trackId, clipId: selectedClipId })
+              setSelectedClipId(null)
+            }}
+            disabled={!selectedClipId}
+          >
+            Delete clip
+          </button>
+
+          <span className="divider" aria-hidden="true" />
+
+          <ImportButton onImported={handleImported} />
+
+          <span className="readout">
+            <span aria-label={`${clips.length} ${clips.length === 1 ? 'clip' : 'clips'}`}>
+              <b>{clips.length}</b> {clips.length === 1 ? 'clip' : 'clips'}
+            </span>
+            <span>
+              <b>{formatDuration(cutDurationMs)}</b> cut
+            </span>
+          </span>
+        </div>
+
+        <p className="hint">
+          Drag a clip to move it, or its edges to trim. Scroll to pan, hold ctrl or cmd and scroll
+          to zoom, and click empty space to move the playhead.
         </p>
-      )}
-
-      <VideoPlayer src={sourceUrl} playhead={playhead} />
-
-      <section style={{ marginTop: 16 }}>
-        <Timeline bus={bus} playhead={playhead} />
-      </section>
-
-      <section style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button type="button" onClick={() => bus.undo()} disabled={!bus.canUndo}>
-          Undo
-        </button>
-        <button type="button" onClick={() => bus.redo()} disabled={!bus.canRedo}>
-          Redo
-        </button>
-        <span style={{ color: '#8a8a94', fontSize: 14 }}>
-          {clipCount} clip{clipCount === 1 ? '' : 's'}
-        </span>
-      </section>
-
-      <p style={{ color: '#8a8a94', fontSize: 13, marginTop: 16 }}>
-        Drag a clip to move it, drag its edges to trim. Scroll to pan, ctrl or cmd and scroll to
-        zoom. Click empty space to move the playhead.
-      </p>
-    </main>
+      </footer>
+    </div>
   )
 }

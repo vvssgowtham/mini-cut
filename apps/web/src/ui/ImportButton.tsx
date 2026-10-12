@@ -58,31 +58,40 @@ export function ImportButton({ onImported, disabled }: ImportButtonProps) {
   }
 
   return (
-    <div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="video/*"
-        aria-label="Import video"
-        disabled={disabled || state.status === 'copying'}
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) void handleFile(file)
-        }}
-      />
+    <div className="import">
+      {/* A real input, visually hidden behind its own label: the native control prints "No file
+          chosen" beside itself, which cannot be styled and reads as unfinished next to real buttons.
+          The label keeps it clickable and focusable. */}
+      <label className="import-label">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="video/*"
+          disabled={disabled || state.status === 'copying'}
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) void handleFile(file)
+          }}
+        />
+        <span>Import video</span>
+      </label>
 
       {state.status === 'copying' && (
-        <span style={{ marginLeft: 12 }}>
-          <progress value={state.progress.copiedBytes} max={state.progress.totalBytes || 1} />{' '}
-          <span>{percent(state.progress)}%</span>{' '}
+        <span className="copying">
+          <progress
+            aria-label="Copying video"
+            value={state.progress.copiedBytes}
+            max={state.progress.totalBytes || 1}
+          />
+          <b>{percent(state.progress)}%</b>
           <button type="button" onClick={() => abortRef.current?.abort()}>
-            Cancel
+            Stop copying
           </button>
         </span>
       )}
 
       {state.status === 'failed' && (
-        <span role="alert" style={{ marginLeft: 12, color: '#ff6b6b' }}>
+        <span role="alert" className="alert">
           {state.message}
         </span>
       )}
