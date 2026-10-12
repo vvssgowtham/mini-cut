@@ -52,6 +52,7 @@ export default function App() {
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [notice, setNotice] = useState<string | null>(null)
+  const [online, setOnline] = useState(() => navigator.onLine)
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   /** Object URLs are revoked on replace and on unmount; otherwise each import pins another file. */
   const sourceUrlRef = useRef<string | null>(null)
@@ -128,6 +129,18 @@ export default function App() {
       autosave.stop()
     }
   }, [bus])
+
+  // The project lives in IndexedDB and the media in OPFS, so going offline costs nothing — but the
+  // user cannot know that unless it is said.
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -206,8 +219,9 @@ export default function App() {
         <Timecode playhead={playhead} idle={!sourceUrl} />
         <span className="state" data-tone={saveState === 'error' ? 'error' : undefined}>
           {saveState === 'saving' && 'Saving'}
-          {saveState === 'saved' && 'Saved'}
+          {saveState === 'saved' && (online ? 'Saved' : 'Saved on this device')}
           {saveState === 'error' && 'Not saved'}
+          {saveState === 'idle' && !online && 'Offline'}
         </span>
       </header>
 
