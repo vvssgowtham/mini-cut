@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { apply } from './commands'
-import type { DeleteOp, InsertOp, MergeOp, MoveOp, Op, SplitOp, TrimOp } from './commands'
+import type { DeleteOp, InsertOp, JoinOp, MergeOp, MoveOp, Op, SplitOp, TrimOp } from './commands'
 import { clipIds, deepFreeze, getClip, makeProject } from './fixtures'
 import { clipEnd } from './types'
 
@@ -205,5 +205,98 @@ describe('inverse round trip', () => {
     }
 
     expect(project).toEqual(start)
+  })
+})
+
+describe('join', () => {
+  /** Split 'a' at 1000 first, so there are two genuinely contiguous halves to join back. */
+  function splitProject() {
+    return apply(makeProject(), splitA).project
+  }
+
+  const joinA: JoinOp = {
+    type: 'join',
+    trackId: 't1',
+    leftId: 'a1',
+    rightId: 'a2',
+    mergedId: 'whole',
+  }
+
+  it('replaces the two halves with one clip spanning both', () => {
+    const { project } = apply(splitProject(), joinA)
+
+    expect(clipIds(project, 't1')).toEqual(['whole', 'b'])
+    expect(getClip(project, 't1', 'whole')).toEqual({
+      id: 'whole',
+      sourceId: 's1',
+      sourceIn: 1000,
+      sourceOut: 3000,
+      start: 0,
+    })
+  })
+
+  it('is the exact inverse of a split', () => {
+    const start = makeProject()
+    const split = apply(start, splitA).project
+    const { project: joined, inverse } = apply(split, joinA)
+
+    expect(apply(joined, inverse).project).toEqual(split)
+  })
+
+  it('refuses clips that are not next to each other', () => {
+    expect(() => apply(splitProject(), { ...joinA, leftId: 'a1', rightId: 'b' })).toThrow(
+      /next to each other/,
+    )
+  })
+
+  it('refuses clips from different media', () => {
+    const base = splitProject()
+    const track = base.tracks[0]!
+    const mixed = {
+      ...base,
+      tracks: [
+        {
+          ...track,
+          clips: track.clips.map((c) => (c.id === 'a2' ? { ...c, sourceId: 'other' } : c)),
+        },
+      ],
+    }
+
+    expect(() => apply(mixed, joinA)).toThrow(/different media/)
+  })
+
+  it('refuses halves with a cut taken out between them', () => {
+    // Trim the right half's start forward: the footage between the two no longer joins up.
+    const trimmed = apply(splitProject(), {
+      type: 'trim',
+      trackId: 't1',
+      clipId: 'a2',
+      sourceIn: 2500,
+      sourceOut: 3000,
+    }).project
+
+    expect(() => apply(trimmed, joinA)).toThrow(/a cut was made/)
+  })
+
+  it('refuses halves with a gap on the timeline', () => {
+    const moved = apply(splitProject(), {
+      type: 'move',
+      trackId: 't1',
+      clipId: 'a2',
+      start: 1500,
+    }).project
+
+    expect(() => apply(moved, joinA)).toThrow(/gap between them/)
+  })
+
+  it('refuses an id that is already taken', () => {
+    expect(() => apply(splitProject(), { ...joinA, mergedId: 'b' })).toThrow(/already taken/)
+  })
+
+  it('does not mutate the project it is given', () => {
+    const frozen = deepFreeze(splitProject())
+
+    expect(() => apply(frozen, joinA)).not.toThrow()
+    expect(clipIds(frozen, 't1')).toEqual(['a1', 'a2', 'b'])
   })
 })

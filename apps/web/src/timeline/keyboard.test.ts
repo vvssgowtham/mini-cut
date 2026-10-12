@@ -51,6 +51,8 @@ describe('keyToAction', () => {
     expect(keyToAction({ key: '[' })?.type).toBe('trim-in')
     expect(keyToAction({ key: ']' })?.type).toBe('trim-out')
     expect(keyToAction({ key: 's' })?.type).toBe('split')
+    expect(keyToAction({ key: 'j' })?.type).toBe('join')
+    expect(keyToAction({ key: 'J' })?.type).toBe('join')
     expect(keyToAction({ key: 'S' })?.type).toBe('split')
     expect(keyToAction({ key: 'Delete' })?.type).toBe('delete')
     expect(keyToAction({ key: 'Backspace' })?.type).toBe('delete')
@@ -200,5 +202,45 @@ describe('delete', () => {
 
     expect(result.commands).toEqual([{ type: 'delete', trackId: 't1', clipId: 'b' }])
     expect(result.selection).toBeNull()
+  })
+})
+
+describe('join', () => {
+  /** Two halves of one source, continuous across the seam. */
+  const halves: Project = {
+    version: 1,
+    durationMs: 6000,
+    tracks: [
+      {
+        id: 't1',
+        clips: [
+          { id: 'x', sourceId: 's1', sourceIn: 0, sourceOut: 2000, start: 0 },
+          { id: 'y', sourceId: 's1', sourceIn: 2000, sourceOut: 5000, start: 2000 },
+        ],
+      },
+    ],
+  }
+
+  it('joins the selected clip with the one after it', () => {
+    const result = applyKeyAction({ type: 'join' }, halves, 'x', 0, ids())
+
+    expect(result.commands).toEqual([
+      { type: 'join', trackId: 't1', leftId: 'x', rightId: 'y', mergedId: 'new-1' },
+    ])
+    expect(result.selection).toBe('new-1')
+  })
+
+  it('explains why it cannot join rather than doing nothing', () => {
+    const result = applyKeyAction({ type: 'join' }, halves, 'y', 0, ids())
+
+    expect(result.commands).toEqual([])
+    expect(result.message).toMatch(/nothing after/i)
+  })
+
+  it('refuses a join across a cut', () => {
+    const result = applyKeyAction({ type: 'join' }, project, 'a', 0, ids())
+
+    expect(result.commands).toEqual([])
+    expect(result.message).toBeTruthy()
   })
 })

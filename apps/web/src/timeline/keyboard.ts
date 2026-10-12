@@ -13,6 +13,7 @@
  * `S` to split at the playhead, and bracket keys to trim an edge to the playhead.
  */
 
+import { joinAvailability } from '../editor/clipActions'
 import type { Command } from '../editor/commands'
 import { clipEnd, type Clip, type Ms, type Project } from '../editor/types'
 
@@ -27,6 +28,7 @@ export type KeyAction =
   | { type: 'trim-in' }
   | { type: 'trim-out' }
   | { type: 'split' }
+  | { type: 'join' }
   | { type: 'delete' }
 
 export type KeyEventLike = {
@@ -60,6 +62,9 @@ export function keyToAction(event: KeyEventLike): KeyAction | null {
     case 's':
     case 'S':
       return { type: 'split' }
+    case 'j':
+    case 'J':
+      return { type: 'join' }
     case 'Delete':
     case 'Backspace':
       return { type: 'delete' }
@@ -160,6 +165,16 @@ export function applyKeyAction(
         commands: [
           { type: 'split', trackId, clipId: clip.id, atMs, leftId: newId(), rightId: newId() },
         ],
+      }
+    }
+
+    case 'join': {
+      // Same rules as the toolbar button: one source of truth for when a join is legitimate.
+      const availability = joinAvailability(project, clip.id, newId)
+      if (!availability.available) return { commands: [], message: availability.reason }
+      return {
+        commands: [availability.command],
+        selection: availability.command.type === 'join' ? availability.command.mergedId : undefined,
       }
     }
 
