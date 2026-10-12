@@ -9,6 +9,7 @@
 
 import { useEffect, useRef } from 'react'
 import type { Ms } from '../editor/types'
+import type { PlaybackStore } from './playback'
 import type { PlayheadStore } from './playhead'
 import { msToSeconds, secondsToMs } from './time'
 
@@ -19,12 +20,19 @@ export type VideoPlayerProps = {
   /** Object URL from `openOpfsAsUrl`, or null before anything is imported. */
   src: string | null
   playhead: PlayheadStore
+  playback: PlaybackStore
 }
 
-export function VideoPlayer({ src, playhead }: VideoPlayerProps) {
+export function VideoPlayer({ src, playhead, playback }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   /** The last position this component pushed into the store, so its echo can be ignored. */
   const lastPushedRef = useRef<Ms>(-1)
+
+  // Register the element so the transport and the space bar can drive it.
+  useEffect(() => {
+    playback.attach(videoRef.current)
+    return () => playback.attach(null)
+  }, [playback, src])
 
   // Playhead -> video.
   useEffect(() => {
@@ -82,5 +90,18 @@ export function VideoPlayer({ src, playhead }: VideoPlayerProps) {
     )
   }
 
-  return <video ref={videoRef} src={src} controls preload="metadata" onTimeUpdate={onTimeUpdate} />
+  return (
+    // No `controls`: the browser's own bar is a wide grey slab that fights everything around it, and
+    // the transport plus the timeline already cover play, step and scrub.
+    <video
+      ref={videoRef}
+      src={src}
+      preload="metadata"
+      onTimeUpdate={onTimeUpdate}
+      onPlay={() => playback.reportPlaying(true)}
+      onPause={() => playback.reportPlaying(false)}
+      onEnded={() => playback.reportPlaying(false)}
+      onClick={() => void playback.toggle()}
+    />
+  )
 }

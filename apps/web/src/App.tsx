@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CommandBus } from './editor/history'
 import { clipEnd, type Project } from './editor/types'
 import { useProject } from './editor/useProject'
+import { PlaybackStore } from './media/playback'
 import { PlayheadStore } from './media/playhead'
 import { probeDuration } from './media/probe'
 import { VideoPlayer } from './media/VideoPlayer'
@@ -43,6 +44,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 export default function App() {
   const [bus] = useState(() => new CommandBus(emptyProject()))
   const [playhead] = useState(() => new PlayheadStore())
+  const [playback] = useState(() => new PlaybackStore())
   const project = useProject(bus)
 
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
@@ -138,6 +140,14 @@ export default function App() {
         return
       }
 
+      if (event.key === ' ') {
+        // Space is the universal play/pause in every editor. preventDefault stops it also
+        // scrolling the page, and stops a focused button re-firing its own click.
+        event.preventDefault()
+        void playback.toggle()
+        return
+      }
+
       if ((event.key === 'Backspace' || event.key === 'Delete') && selectedClipId) {
         const trackId = bus.project.tracks[0]?.id
         if (!trackId) return
@@ -148,7 +158,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [bus, selectedClipId])
+  }, [bus, playback, selectedClipId])
 
   const handleImported = useCallback(
     async (opfsName: string) => {
@@ -200,7 +210,7 @@ export default function App() {
       </header>
 
       <section className="zone viewer">
-        <VideoPlayer src={sourceUrl} playhead={playhead} />
+        <VideoPlayer src={sourceUrl} playhead={playhead} playback={playback} />
       </section>
 
       <section className="zone timeline" aria-label="Timeline">
@@ -220,7 +230,12 @@ export default function App() {
         )}
 
         <div className="transport">
-          <Transport playhead={playhead} durationMs={timelineEndMs} disabled={clips.length === 0} />
+          <Transport
+            playhead={playhead}
+            playback={playback}
+            durationMs={timelineEndMs}
+            disabled={clips.length === 0}
+          />
 
           <span className="divider" aria-hidden="true" />
 

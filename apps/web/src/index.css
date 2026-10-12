@@ -127,6 +127,7 @@ body {
    stretched across a 16:9 box with vast black margins either side. */
 .viewer video {
   display: block;
+  cursor: pointer;
   block-size: min(58vh, 460px);
   inline-size: auto;
   max-inline-size: 100%;
@@ -161,6 +162,26 @@ body {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* The one filled control on the page: play is the thing you reach for most. */
+.transport-group .play {
+  min-inline-size: 72px;
+  color: var(--ink);
+  background: var(--text);
+  border-color: var(--text);
+  font-weight: 500;
+}
+
+.transport-group .play:hover:not(:disabled) {
+  background: #fff;
+  border-color: #fff;
+}
+
+.transport-group .play:disabled {
+  color: var(--dim);
+  background: var(--panel);
+  border-color: var(--line);
 }
 
 /* Stepping controls read as one instrument: a single outline, hairlines between. */

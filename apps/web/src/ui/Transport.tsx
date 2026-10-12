@@ -9,7 +9,9 @@
  * the timeline canvas is not, which makes this the only keyboard path to the playhead.
  */
 
+import { useCallback, useSyncExternalStore } from 'react'
 import type { Ms } from '../editor/types'
+import type { PlaybackStore } from '../media/playback'
 import type { PlayheadStore } from '../media/playhead'
 import { DISPLAY_FPS } from '../media/timecode'
 
@@ -17,18 +19,35 @@ const FRAME_MS = Math.round(1000 / DISPLAY_FPS)
 
 export type TransportProps = {
   playhead: PlayheadStore
+  playback: PlaybackStore
   /** End of the last clip, so stepping and jumping cannot run past the footage. */
   durationMs: Ms
   disabled?: boolean
 }
 
-export function Transport({ playhead, durationMs, disabled }: TransportProps) {
+export function Transport({ playhead, playback, durationMs, disabled }: TransportProps) {
+  const isPlaying = useSyncExternalStore(
+    useCallback((onChange: () => void) => playback.subscribe(onChange), [playback]),
+    useCallback(() => playback.isPlaying, [playback]),
+  )
+
   const step = (deltaMs: Ms) => {
+    // Stepping is a scrub, not a seek during playback: stop first so the picture holds still.
+    playback.pause()
     playhead.set(Math.min(durationMs, Math.max(0, playhead.ms + deltaMs)))
   }
 
   return (
     <div className="transport-group" role="group" aria-label="Transport">
+      <button
+        type="button"
+        className="play"
+        onClick={() => void playback.toggle()}
+        disabled={disabled}
+        aria-pressed={isPlaying}
+      >
+        {isPlaying ? 'Pause' : 'Play'}
+      </button>
       <button type="button" onClick={() => playhead.set(0)} disabled={disabled} title="Go to start">
         Start
       </button>
