@@ -156,8 +156,34 @@ body {
 .transport {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+/* Stepping controls read as one instrument: a single outline, hairlines between. */
+.transport-group {
+  display: flex;
+}
+
+.transport-group button {
+  border-radius: 0;
+  border-right-width: 0;
+}
+
+.transport-group button:first-child {
+  border-radius: 3px 0 0 3px;
+}
+
+.transport-group button:last-child {
+  border-right-width: 1px;
+  border-radius: 0 3px 3px 0;
+}
+
+.divider {
+  inline-size: 1px;
+  block-size: 22px;
+  background: var(--line);
+  margin: 0 4px;
 }
 
 .readout {
@@ -180,14 +206,20 @@ body {
 button {
   font: inherit;
   color: var(--text);
-  background: transparent;
+  background: var(--panel);
   border: 1px solid var(--line);
-  padding: 6px 14px;
+  border-radius: 3px;
+  padding: 6px 13px;
   cursor: pointer;
 }
 
 button:hover:not(:disabled) {
   border-color: var(--dim);
+  background: #1e2429;
+}
+
+button:active:not(:disabled) {
+  background: #11161a;
 }
 
 button:disabled {
