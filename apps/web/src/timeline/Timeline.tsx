@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { CommandBus } from '../editor/history'
 import { useProject } from '../editor/useProject'
+import type { PlayheadStore } from '../media/playhead'
 import { clipEnd, type Clip, type Ms } from '../editor/types'
 import { drawTimeline, CLIP_HEIGHT_PX, CLIP_TOP_PX } from './draw'
 import { hitTest, type Hit } from './hitTest'
@@ -37,14 +38,15 @@ type DragState = {
 
 export type TimelineProps = {
   bus: CommandBus
+  /** Shared with the video player, so scrubbing here seeks the preview and vice versa. */
+  playhead: PlayheadStore
   heightPx?: number
 }
 
-export function Timeline({ bus, heightPx = DEFAULT_HEIGHT_PX }: TimelineProps) {
+export function Timeline({ bus, playhead, heightPx = DEFAULT_HEIGHT_PX }: TimelineProps) {
   const project = useProject(bus)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<Viewport>({ offsetMs: 0, pxPerMs: INITIAL_PX_PER_MS, widthPx: 0 })
-  const playheadRef = useRef<Ms>(0)
   const dragRef = useRef<DragState | null>(null)
   const frameRef = useRef<number | null>(null)
   const projectRef = useRef(project)
@@ -66,12 +68,12 @@ export function Timeline({ bus, heightPx = DEFAULT_HEIGHT_PX }: TimelineProps) {
       drawTimeline(ctx, {
         viewport: viewportRef.current,
         clips: drag ? clips.map((c) => (c.id === drag.preview.id ? drag.preview : c)) : clips,
-        playheadMs: playheadRef.current,
+        playheadMs: playhead.ms,
         heightPx,
         devicePixelRatio: window.devicePixelRatio || 1,
       })
     })
-  }, [heightPx])
+  }, [heightPx, playhead])
 
   // Keep the ref the draw and pointer callbacks read in step, then redraw. Both run after this
   // effect, so they always see the current project.
@@ -101,6 +103,9 @@ export function Timeline({ bus, heightPx = DEFAULT_HEIGHT_PX }: TimelineProps) {
     observer.observe(canvas)
     return () => observer.disconnect()
   }, [heightPx, scheduleDraw])
+
+  // The video writes to the store during playback; redraw so the marker tracks the picture.
+  useEffect(() => playhead.subscribe(scheduleDraw), [playhead, scheduleDraw])
 
   useEffect(() => {
     return () => {
@@ -134,7 +139,7 @@ export function Timeline({ bus, heightPx = DEFAULT_HEIGHT_PX }: TimelineProps) {
 
       if (!hit) {
         // Empty space scrubs the playhead.
-        playheadRef.current = Math.max(0, Math.round(xToTime(viewport, x)))
+        playhead.set(xToTime(viewport, x))
         scheduleDraw()
         return
       }
@@ -145,7 +150,7 @@ export function Timeline({ bus, heightPx = DEFAULT_HEIGHT_PX }: TimelineProps) {
       event.currentTarget.setPointerCapture(event.pointerId)
       dragRef.current = { hit, original, grabMs: xToTime(viewport, x), preview: original }
     },
-    [scheduleDraw],
+    [playhead, scheduleDraw],
   )
 
   const handlePointerMove = useCallback(
