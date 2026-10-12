@@ -51,6 +51,24 @@ export type SplitOp = {
   rightId: string
 }
 
+/**
+ * Join two adjacent clips back into one.
+ *
+ * Distinct from the internal `merge` below, which exists only as split's inverse and trusts the
+ * caller to hand it the original clip. A join comes from a person, so it works the other way round:
+ * it is given two ids, checks they can legitimately be joined, and builds the result itself. The
+ * check matters — joining clips that are not contiguous in the source would silently change which
+ * footage is shown, which is the kind of edit nobody notices until the export.
+ */
+export type JoinOp = {
+  type: 'join'
+  trackId: string
+  leftId: string
+  rightId: string
+  /** Id for the resulting clip; supplied so the op stays pure. */
+  mergedId: string
+}
+
 /** Internal: the inverse of a delete. Puts a clip back at the exact index it was removed from. */
 export type InsertOp = {
   type: 'insert'
@@ -69,7 +87,7 @@ export type MergeOp = {
 }
 
 /** What the UI and the AI agent are allowed to emit. */
-export type Command = TrimOp | MoveOp | DeleteOp | SplitOp
+export type Command = TrimOp | MoveOp | DeleteOp | SplitOp | JoinOp
 
 /** Everything `apply` understands, including the two inverse-only ops. */
 export type Op = Command | InsertOp | MergeOp
@@ -223,6 +241,59 @@ export function apply(project: Project, op: Op): ApplyResult {
       return {
         project: replaceTrack(project, { ...track, clips }),
         inverse: { type: 'delete', trackId: op.trackId, clipId: op.clip.id },
+      }
+    }
+
+    case 'join': {
+      const track = findTrack(project, op.trackId)
+      const leftIndex = findClipIndex(track, op.leftId)
+      const rightIndex = findClipIndex(track, op.rightId)
+
+      if (rightIndex !== leftIndex + 1) {
+        throw new Error(`join needs ${op.leftId} and ${op.rightId} to sit next to each other`)
+      }
+
+      const left = clipAt(track, leftIndex)
+      const right = clipAt(track, rightIndex)
+
+      if (left.sourceId !== right.sourceId) {
+        throw new Error(`cannot join clips from different media`)
+      }
+      // Contiguous in the source, and meeting on the timeline. Without both, joining would show
+      // footage the two clips never showed between them.
+      if (left.sourceOut !== right.sourceIn) {
+        throw new Error(`cannot join ${op.leftId} and ${op.rightId}: a cut was made between them`)
+      }
+      if (clipEnd(left) !== right.start) {
+        throw new Error(`cannot join ${op.leftId} and ${op.rightId}: there is a gap between them`)
+      }
+      if (track.clips.some((existing) => existing.id === op.mergedId)) {
+        throw new Error(`join id ${op.mergedId} is already taken on track ${track.id}`)
+      }
+
+      const merged: Clip = {
+        id: op.mergedId,
+        sourceId: left.sourceId,
+        sourceIn: left.sourceIn,
+        sourceOut: right.sourceOut,
+        start: left.start,
+      }
+
+      const clips = [...track.clips]
+      clips.splice(leftIndex, 2, merged)
+
+      return {
+        project: replaceTrack(project, { ...track, clips }),
+        // A split at the seam restores both halves with their original ids: join and split are
+        // exact inverses of one another.
+        inverse: {
+          type: 'split',
+          trackId: op.trackId,
+          clipId: op.mergedId,
+          atMs: right.start,
+          leftId: op.leftId,
+          rightId: op.rightId,
+        },
       }
     }
 

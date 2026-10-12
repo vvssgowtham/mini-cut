@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentPanel } from './agent/AgentPanel'
+import { joinAvailability, splitAvailability } from './editor/clipActions'
 import { CommandBus } from './editor/history'
 import { clipEnd, type Project } from './editor/types'
 import { useProject } from './editor/useProject'
@@ -53,6 +54,9 @@ export default function App() {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [notice, setNotice] = useState<string | null>(null)
   const [online, setOnline] = useState(() => navigator.onLine)
+  // Recomputed per render rather than memoised: it depends on the playhead, which changes outside
+  // React, and a stale enabled/disabled button is worse than the work of checking again.
+  const [playheadTick, setPlayheadTick] = useState(0)
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   /** Object URLs are revoked on replace and on unmount; otherwise each import pins another file. */
   const sourceUrlRef = useRef<string | null>(null)
@@ -132,6 +136,10 @@ export default function App() {
 
   // The project lives in IndexedDB and the media in OPFS, so going offline costs nothing — but the
   // user cannot know that unless it is said.
+  // Re-render the toolbar when the playhead moves, so Split enables and disables as it crosses a
+  // clip edge. Only the toolbar: the canvas and the video read the store directly.
+  useEffect(() => playhead.subscribe(() => setPlayheadTick((tick) => tick + 1)), [playhead])
+
   useEffect(() => {
     const update = () => setOnline(navigator.onLine)
     window.addEventListener('online', update)
@@ -211,6 +219,9 @@ export default function App() {
   const clips = project.tracks[0]?.clips ?? []
   const cutDurationMs = clips.reduce((sum, clip) => sum + (clip.sourceOut - clip.sourceIn), 0)
   const timelineEndMs = clips.reduce((end, clip) => Math.max(end, clipEnd(clip)), 0)
+  void playheadTick // the subscription above is what keeps these two in step with the playhead
+  const split = splitAvailability(project, selectedClipId, playhead.ms)
+  const join = joinAvailability(project, selectedClipId)
 
   return (
     <div className="app">
@@ -268,14 +279,39 @@ export default function App() {
           <button
             type="button"
             onClick={() => {
+              if (!split.available) return
+              bus.execute(split.command)
+              setSelectedClipId(split.command.type === 'split' ? split.command.leftId : null)
+            }}
+            disabled={!split.available}
+            title={split.available ? 'Split at the playhead (S)' : split.reason}
+          >
+            Split
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!join.available) return
+              bus.execute(join.command)
+              setSelectedClipId(join.command.type === 'join' ? join.command.mergedId : null)
+            }}
+            disabled={!join.available}
+            title={join.available ? 'Join with the next clip' : join.reason}
+          >
+            Join
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               const trackId = bus.project.tracks[0]?.id
               if (!trackId || !selectedClipId) return
               bus.execute({ type: 'delete', trackId, clipId: selectedClipId })
               setSelectedClipId(null)
             }}
             disabled={!selectedClipId}
+            title={selectedClipId ? 'Delete the selected clip' : 'Select a clip to delete.'}
           >
-            Delete clip
+            Delete
           </button>
 
           <span className="divider" aria-hidden="true" />
