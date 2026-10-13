@@ -162,6 +162,19 @@ describe('clips', () => {
     expect(texts(ctx)).toContain('00:00:03:00')
   })
 
+  it('keeps the label on screen when the clip is scrolled off the left', () => {
+    // A long clip starting well before the viewport: its left edge is at a negative x, so a label
+    // pinned there would be drawn off screen and the clip you are looking at would be unlabelled.
+    const ctx = draw({
+      viewport: { ...viewport, offsetMs: 60_000 },
+      clips: [clip('a', 0, 300_000, 'long-take.mp4')],
+    })
+
+    expect(texts(ctx)).toContain('long-take.mp4')
+    const label = ctx.calls.find((c) => c.method === 'fillText' && c.args[0] === 'long-take.mp4')
+    expect(label?.args[1] as number).toBeGreaterThanOrEqual(0)
+  })
+
   it('omits the label on a clip too narrow to read it', () => {
     // 200 ms at 0.1 px/ms is 20 px wide.
     const ctx = draw({ clips: [clip('a', 0, 200, 'beach.mov')] })

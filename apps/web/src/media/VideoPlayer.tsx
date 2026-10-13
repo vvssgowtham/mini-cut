@@ -93,7 +93,23 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
   const advance = useCallback(
     (sourceMs: Ms) => {
       const current = clipAt(clipsRef.current, playhead.ms)
-      if (!current || current.sourceId !== activeSourceId) return
+
+      // No clip under the playhead: it is sitting in a gap, or past the end of the cut. The element
+      // will happily keep playing its own file either way, showing footage the cut does not include
+      // while the playhead stays put — so jump to whatever comes next, or stop.
+      if (!current) {
+        const next = playbackPositionAt(clipsRef.current, playhead.ms)
+        if (!next) {
+          playback.pause()
+          return
+        }
+        lastPushedRef.current = -1
+        playhead.set(next.timelineMs)
+        seekTo(next.timelineMs)
+        return
+      }
+
+      if (current.sourceId !== activeSourceId) return
 
       if (sourceMs >= current.sourceOut) {
         // Past this clip's out point: the cut either continues elsewhere or ends here.

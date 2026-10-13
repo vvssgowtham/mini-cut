@@ -115,6 +115,28 @@ describe('playback across a clip boundary', () => {
     expect(play).not.toHaveBeenCalled()
   })
 
+  it('jumps forward out of a gap rather than playing footage the cut excludes', () => {
+    // Clips meet at 3000; make a gap by starting the second at 4000.
+    const playhead = new PlayheadStore(3500)
+    const playback = new PlaybackStore()
+    render(
+      <VideoPlayer
+        clips={[first, { ...second, start: 4000 }]}
+        sources={sources}
+        playhead={playhead}
+        playback={playback}
+      />,
+    )
+    const video = document.querySelector('video')
+    if (!video) throw new Error('no video element rendered')
+    playback.reportPlaying(true)
+
+    act(() => atSourceTime(video, 1.0))
+
+    // Moved to where the next clip actually begins instead of leaving the playhead stranded.
+    expect(playhead.ms).toBe(4000)
+  })
+
   it('stops at the end of the last clip rather than running on', () => {
     const { playback, video } = setup(3000)
     playback.reportPlaying(true)
