@@ -69,7 +69,12 @@ export type JoinOp = {
   mergedId: string
 }
 
-/** Internal: the inverse of a delete. Puts a clip back at the exact index it was removed from. */
+/**
+ * Put a clip on a track at a given index.
+ *
+ * Both the inverse of a delete and the way new media arrives: importing a second file inserts a
+ * clip rather than replacing the project, so the import is undoable like any other edit.
+ */
 export type InsertOp = {
   type: 'insert'
   trackId: string
@@ -87,10 +92,10 @@ export type MergeOp = {
 }
 
 /** What the UI and the AI agent are allowed to emit. */
-export type Command = TrimOp | MoveOp | DeleteOp | SplitOp | JoinOp
+export type Command = TrimOp | MoveOp | DeleteOp | SplitOp | JoinOp | InsertOp
 
-/** Everything `apply` understands, including the two inverse-only ops. */
-export type Op = Command | InsertOp | MergeOp
+/** Everything `apply` understands, including the inverse-only `merge`. */
+export type Op = Command | MergeOp
 
 export type ApplyResult = {
   project: Project
