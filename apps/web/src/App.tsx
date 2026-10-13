@@ -45,6 +45,15 @@ const hasIndexedDb = () => typeof indexedDB !== 'undefined'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+/**
+ * Restoring is a real state, not an instant. Reading IndexedDB and opening the media takes long
+ * enough for someone to start editing in the meantime, and both orders of that race lose work: an
+ * edit made first is overwritten by the restore, and an edit made first also causes autosave to
+ * write the empty project over the saved one. So nothing saves and nothing is editable until this
+ * settles.
+ */
+type RestoreState = 'restoring' | 'ready'
+
 export default function App() {
   const [bus] = useState(() => new CommandBus(emptyProject()))
   const [playhead] = useState(() => new PlayheadStore())
@@ -61,6 +70,9 @@ export default function App() {
   // React, and a stale enabled/disabled button is worse than the work of checking again.
   const [playheadTick, setPlayheadTick] = useState(0)
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
+  const [restoreState, setRestoreState] = useState<RestoreState>(() =>
+    hasIndexedDb() ? 'restoring' : 'ready',
+  )
   /** Revoked on unmount; each createObjectURL pins its file for the life of the document. */
   const sourcesRef = useRef<ReadonlyMap<string, string>>(sources)
 
@@ -95,6 +107,12 @@ export default function App() {
       try {
         const restored = await loadProject()
         if (cancelled || !restored) return
+        // If an edit somehow landed first, it wins. Replacing here would throw away work the user
+        // can see on screen, which is worse than not reopening the old project.
+        if (bus.canUndo) {
+          setNotice('Kept your current edit; the previously saved project was not reopened.')
+          return
+        }
         bus.replace(restored)
 
         const sourceIds = new Set(
@@ -109,6 +127,10 @@ export default function App() {
         } else {
           setNotice(error instanceof Error ? error.message : 'could not restore the last project')
         }
+      } finally {
+        // Even a failed restore has to release the editor, or a missing media file would leave it
+        // locked with no way back.
+        if (!cancelled) setRestoreState('ready')
       }
     })()
 
@@ -120,7 +142,9 @@ export default function App() {
   // Autosave. Flushed on hide rather than on unload: a backgrounded tab can be discarded without
   // ever firing unload, and pagehide/visibilitychange are the events that actually run.
   useEffect(() => {
-    if (!hasIndexedDb()) return
+    // Not before the restore has settled: starting earlier lets the empty initial project be
+    // written over the saved one.
+    if (!hasIndexedDb() || restoreState !== 'ready') return
 
     const autosave = startAutosave(
       bus,
@@ -147,14 +171,14 @@ export default function App() {
       void autosave.flush()
       autosave.stop()
     }
-  }, [bus])
+  }, [bus, restoreState])
 
-  // The project lives in IndexedDB and the media in OPFS, so going offline costs nothing — but the
-  // user cannot know that unless it is said.
   // Re-render the toolbar when the playhead moves, so Split enables and disables as it crosses a
   // clip edge. Only the toolbar: the canvas and the video read the store directly.
   useEffect(() => playhead.subscribe(() => setPlayheadTick((tick) => tick + 1)), [playhead])
 
+  // The project lives in IndexedDB and the media in OPFS, so going offline costs nothing — but the
+  // user cannot know that unless it is said.
   useEffect(() => {
     const update = () => setOnline(navigator.onLine)
     window.addEventListener('online', update)
@@ -247,10 +271,13 @@ export default function App() {
         <h1 className="wordmark">Mini Cut</h1>
         <Timecode playhead={playhead} idle={clips.length === 0} />
         <span className="state" data-tone={saveState === 'error' ? 'error' : undefined}>
-          {saveState === 'saving' && 'Saving'}
-          {saveState === 'saved' && (online ? 'Saved' : 'Saved on this device')}
-          {saveState === 'error' && 'Not saved'}
-          {saveState === 'idle' && !online && 'Offline'}
+          {restoreState === 'restoring' && 'Opening your last project'}
+          {restoreState === 'ready' && saveState === 'saving' && 'Saving'}
+          {restoreState === 'ready' &&
+            saveState === 'saved' &&
+            (online ? 'Saved' : 'Saved on this device')}
+          {restoreState === 'ready' && saveState === 'error' && 'Not saved'}
+          {restoreState === 'ready' && saveState === 'idle' && !online && 'Offline'}
         </span>
       </header>
 
@@ -268,7 +295,11 @@ export default function App() {
       </section>
 
       <section className="zone">
-        <AgentPanel bus={bus} project={project} disabled={clips.length === 0} />
+        <AgentPanel
+          bus={bus}
+          project={project}
+          disabled={clips.length === 0 || restoreState !== 'ready'}
+        />
       </section>
 
       <footer className="zone">
@@ -283,15 +314,23 @@ export default function App() {
             playhead={playhead}
             playback={playback}
             durationMs={timelineEndMs}
-            disabled={clips.length === 0}
+            disabled={clips.length === 0 || restoreState !== 'ready'}
           />
 
           <span className="divider" aria-hidden="true" />
 
-          <button type="button" onClick={() => bus.undo()} disabled={!bus.canUndo}>
+          <button
+            type="button"
+            onClick={() => bus.undo()}
+            disabled={!bus.canUndo || restoreState !== 'ready'}
+          >
             Undo
           </button>
-          <button type="button" onClick={() => bus.redo()} disabled={!bus.canRedo}>
+          <button
+            type="button"
+            onClick={() => bus.redo()}
+            disabled={!bus.canRedo || restoreState !== 'ready'}
+          >
             Redo
           </button>
           <button
@@ -301,7 +340,7 @@ export default function App() {
               bus.execute(split.command)
               setSelectedClipId(split.command.type === 'split' ? split.command.leftId : null)
             }}
-            disabled={!split.available}
+            disabled={!split.available || restoreState !== 'ready'}
             title={split.available ? 'Split at the playhead (S)' : split.reason}
           >
             Split
@@ -313,7 +352,7 @@ export default function App() {
               bus.execute(join.command)
               setSelectedClipId(join.command.type === 'join' ? join.command.mergedId : null)
             }}
-            disabled={!join.available}
+            disabled={!join.available || restoreState !== 'ready'}
             title={join.available ? 'Join with the next clip' : join.reason}
           >
             Join
@@ -326,7 +365,7 @@ export default function App() {
               bus.execute({ type: 'delete', trackId, clipId: selectedClipId })
               setSelectedClipId(null)
             }}
-            disabled={!selectedClipId}
+            disabled={!selectedClipId || restoreState !== 'ready'}
             title={selectedClipId ? 'Delete the selected clip' : 'Select a clip to delete.'}
           >
             Delete
@@ -334,8 +373,11 @@ export default function App() {
 
           <span className="divider" aria-hidden="true" />
 
-          <ImportButton onImported={handleImported} />
-          <ExportButton project={project} disabled={clips.length === 0} />
+          <ImportButton onImported={handleImported} disabled={restoreState !== 'ready'} />
+          <ExportButton
+            project={project}
+            disabled={clips.length === 0 || restoreState !== 'ready'}
+          />
 
           <span className="readout">
             <span aria-label={`${clips.length} ${clips.length === 1 ? 'clip' : 'clips'}`}>
