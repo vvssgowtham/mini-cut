@@ -38,16 +38,28 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastPushedRef = useRef<Ms>(-1)
   const clipsRef = useRef(clips)
+  /**
+   * Whether playback should continue after a source swap.
+   *
+   * Changing the element's `src` makes it fire `pause`, so by the time the new file's metadata
+   * arrives the store already reports "not playing" — and reading it there would stop the cut dead
+   * at every clip boundary. The intent has to be captured before the swap, not inferred after it.
+   */
+  const resumeAfterSwapRef = useRef(false)
 
   /** The file the element should be showing; null until something is asked for. */
   const [requestedSourceId, setRequestedSourceId] = useState<string | null>(null)
 
   // Derived during render rather than set from an effect: an effect would need a second render to
   // show the first import, and falling back here costs nothing.
+  //
+  // The fallback follows the playhead rather than defaulting to the first clip. Mounting with the
+  // playhead already inside a later clip — after a restore, or any remount mid-session — would
+  // otherwise load the wrong file and show the wrong picture until something moved.
   const activeSourceId =
     requestedSourceId && sources.has(requestedSourceId)
       ? requestedSourceId
-      : (clips[0]?.sourceId ?? null)
+      : (playbackPositionAt(clips, playhead.ms)?.clip.sourceId ?? clips[0]?.sourceId ?? null)
   const src = activeSourceId ? (sources.get(activeSourceId) ?? null) : null
 
   useEffect(() => {
@@ -62,6 +74,7 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
 
       if (position.clip.sourceId !== activeSourceId) {
         // The element reloads on the new src; loadedmetadata lands it on the right frame.
+        resumeAfterSwapRef.current = playback.isPlaying
         setRequestedSourceId(position.clip.sourceId)
         return
       }
@@ -73,7 +86,7 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
         video.currentTime = seconds
       }
     },
-    [activeSourceId],
+    [activeSourceId, playback],
   )
 
   /** Source position to timeline position, crossing into the next clip at the boundary. */
@@ -144,8 +157,13 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
     const position = playbackPositionAt(clipsRef.current, playhead.ms)
     const video = videoRef.current
     if (!position || !video || position.clip.sourceId !== activeSourceId) return
+
     video.currentTime = msToSeconds(position.sourceMs)
-    if (playback.isPlaying) void playback.play()
+
+    if (resumeAfterSwapRef.current) {
+      resumeAfterSwapRef.current = false
+      void playback.play()
+    }
   }
 
   const handleTimeUpdate = () => {
