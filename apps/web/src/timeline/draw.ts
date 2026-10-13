@@ -150,14 +150,19 @@ function drawClip(
   ctx.rect(x, CLIP_TOP_PX, width - CLIP_PADDING_PX, CLIP_HEIGHT_PX)
   ctx.clip()
 
+  // Pinned to the visible part of the clip, not to its left edge. A long clip scrolled off the
+  // left would otherwise have its label drawn at a negative x — present, but off screen, so the
+  // clip you are looking at is the one clip you cannot identify.
+  const labelX = Math.max(x, 0) + CLIP_PADDING_PX
+
   ctx.fillStyle = theme.clipText
   ctx.font = '11px system-ui, sans-serif'
   ctx.textBaseline = 'middle'
-  ctx.fillText(clip.sourceId, x + CLIP_PADDING_PX, CLIP_TOP_PX + 16)
+  ctx.fillText(clip.sourceId, labelX, CLIP_TOP_PX + 16)
 
   ctx.fillStyle = theme.rulerText
   ctx.font = '11px ui-monospace, monospace'
-  ctx.fillText(formatTimecode(clipEnd(clip) - clip.start), x + CLIP_PADDING_PX, CLIP_TOP_PX + 34)
+  ctx.fillText(formatTimecode(clipEnd(clip) - clip.start), labelX, CLIP_TOP_PX + 34)
 
   ctx.restore()
 }
