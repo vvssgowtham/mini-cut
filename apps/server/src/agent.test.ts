@@ -9,7 +9,15 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app'
 import type { AgentRequest } from '@mini-cut/shared'
-import { AgentAuthError, AgentConfigError, createGeminiPlanner, type EditPlanner } from './agent'
+import {
+  AgentAuthError,
+  AgentBusyError,
+  AgentConfigError,
+  AgentError,
+  createGeminiPlanner,
+  createGroqPlanner,
+  type EditPlanner,
+} from './agent'
 
 const clips = [
   { id: 'a', sourceIn: 0, sourceOut: 10_000, start: 0 },
@@ -217,7 +225,7 @@ describe('when the model cannot carry out the instruction', () => {
 })
 
 describe('provider selection', () => {
-  const keys = ['ANTHROPIC_API_KEY', 'GOOGLE_API_KEY'] as const
+  const keys = ['ANTHROPIC_API_KEY', 'GOOGLE_API_KEY', 'GROQ_API_KEY'] as const
 
   /** Runs `body` with only the given keys set, restoring the environment afterwards. */
   async function withOnly(
@@ -239,6 +247,35 @@ describe('provider selection', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('uses Groq when only a Groq key is set', async () => {
+    const fetched = vi.fn<(url: string | URL | Request) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  tool_calls: [
+                    { function: { arguments: JSON.stringify({ summary: 'ok', operations: [] }) } },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetched)
+
+    await withOnly({ GROQ_API_KEY: 'gsk_test' }, async () => {
+      const app = buildApp()
+      await post(app, { instruction: 'cut it', clips })
+      await app.close()
+    })
+
+    expect(String(fetched.mock.calls[0]?.[0])).toContain('api.groq.com')
   })
 
   it('uses Gemini when only a Google key is set', async () => {
@@ -275,7 +312,7 @@ describe('provider selection', () => {
       await app.close()
 
       expect(response.statusCode).toBe(503)
-      expect(response.json().error).toMatch(/ANTHROPIC_API_KEY or GOOGLE_API_KEY/)
+      expect(response.json().error).toMatch(/ANTHROPIC_API_KEY, GOOGLE_API_KEY or GROQ_API_KEY/)
     })
   })
 })
@@ -369,5 +406,112 @@ describe('a retired model', () => {
 
     expect(response.statusCode).toBe(503)
     expect(response.json().error).toMatch(/rejected the model/)
+  })
+})
+
+describe('telling a busy model from a missing one', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function replyWith(status: number, message: string) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: { message } }), { status })),
+    )
+    return createGeminiPlanner('AIzaFine', 'gemini-test')({ instruction: 'cut it', clips })
+  }
+
+  it('treats high demand as busy, not as a bad model name', async () => {
+    // The message mentions the model but is not about the model: classifying it as configuration
+    // sent the user to change a setting that was already correct.
+    const failure = await replyWith(
+      503,
+      'This model is currently experiencing high demand. Please try again later.',
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentBusyError)
+    expect((failure as Error).message).toMatch(/try again/i)
+    expect((failure as Error).message).not.toMatch(/GEMINI_MODEL/)
+  })
+
+  it('treats a rate limit as busy', async () => {
+    const failure = await replyWith(429, 'Quota exceeded.').catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentBusyError)
+  })
+
+  it('still reports a model that is genuinely gone', async () => {
+    const failure = await replyWith(
+      404,
+      'This model models/old is no longer available. Use models/new.',
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentConfigError)
+    expect((failure as Error).message).toMatch(/GEMINI_MODEL/)
+  })
+
+  it('asks the caller to retry rather than to reconfigure', async () => {
+    const app = appWith(async () => {
+      throw new AgentBusyError('Gemini', 'High demand.')
+    })
+
+    const response = await post(app, { instruction: 'cut it', clips })
+
+    expect(response.statusCode).toBe(503)
+    expect(response.headers['retry-after']).toBe('20')
+  })
+})
+
+describe('Groq', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function replyWith(status: number, body: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(body), { status })),
+    )
+    return createGroqPlanner('gsk_test', 'llama-test')({ instruction: 'cut it', clips })
+  }
+
+  it('parses the arguments, which arrive as a JSON string rather than an object', async () => {
+    const plan = { summary: 'Trims it.', operations: [{ type: 'delete', clipId: 'a' }] }
+
+    await expect(
+      replyWith(200, {
+        choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify(plan) } }] } }],
+      }),
+    ).resolves.toEqual(plan)
+  })
+
+  it('treats malformed JSON as the model failing, not the request', async () => {
+    await expect(
+      replyWith(200, {
+        choices: [{ message: { tool_calls: [{ function: { arguments: '{not json' } }] } }],
+      }),
+    ).rejects.toBeInstanceOf(AgentError)
+  })
+
+  it('reports a rejected key', async () => {
+    await expect(replyWith(401, { error: { message: 'Invalid API Key' } })).rejects.toBeInstanceOf(
+      AgentAuthError,
+    )
+  })
+
+  it('reports rate limiting as busy, since that is what sent us here', async () => {
+    await expect(
+      replyWith(429, { error: { message: 'Rate limit reached' } }),
+    ).rejects.toBeInstanceOf(AgentBusyError)
+  })
+
+  it('names GROQ_MODEL when a model is decommissioned', async () => {
+    const failure = await replyWith(404, {
+      error: { message: 'The model `llama-old` has been decommissioned.' },
+    }).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentConfigError)
+    expect((failure as Error).message).toMatch(/GROQ_MODEL/)
   })
 })

@@ -12,10 +12,12 @@
  */
 
 import {
+  AgentBusyError,
   AgentConfigError,
   AgentError,
   createAnthropicPlanner,
   createGeminiPlanner,
+  createGroqPlanner,
   planEdit,
 } from './agent'
 import { loadEnvFile } from './env'
@@ -34,30 +36,36 @@ const readEnv = (name: string): string | undefined => process.env[name]
  * 401, which reads like the agent is broken rather than like the credential is.
  */
 function choosePlanner(): { provider: string; planner: EditPlanner } | { error: string } {
-  const anthropicKey = readEnv('ANTHROPIC_API_KEY')
-  if (anthropicKey) {
-    if (!anthropicKey.startsWith('sk-ant-')) {
-      return {
-        error: `ANTHROPIC_API_KEY does not look like an Anthropic key (they begin "sk-ant-"). Got "${anthropicKey.slice(0, 6)}…".`,
-      }
+  const providers = [
+    {
+      name: 'Anthropic',
+      variable: 'ANTHROPIC_API_KEY',
+      prefix: 'sk-ant-',
+      build: createAnthropicPlanner,
+    },
+    { name: 'Gemini', variable: 'GOOGLE_API_KEY', prefix: 'AIza', build: createGeminiPlanner },
+    { name: 'Groq', variable: 'GROQ_API_KEY', prefix: 'gsk_', build: createGroqPlanner },
+  ]
+
+  const skipped: string[] = []
+  for (const { name, variable, prefix, build } of providers) {
+    const key = readEnv(variable)
+    if (!key) continue
+    // Skipped rather than fatal: a stale value for one provider must not stop a working key for
+    // another further down the list. It is still reported, so a typo does not pass unnoticed.
+    if (!key.startsWith(prefix)) {
+      skipped.push(`${variable} does not look like a ${name} key (they begin "${prefix}")`)
+      continue
     }
-    return { provider: 'Anthropic', planner: createAnthropicPlanner(anthropicKey) }
+    return { provider: name, planner: build(key) }
   }
 
-  const googleKey = readEnv('GOOGLE_API_KEY')
-  if (googleKey) {
-    if (!googleKey.startsWith('AIza')) {
-      return {
-        error:
-          `GOOGLE_API_KEY does not look like a Gemini API key (they begin "AIza"). Got "${googleKey.slice(0, 6)}…".\n` +
-          'Create one at https://aistudio.google.com/apikey — a Google Cloud OAuth token or a key ' +
-          'for another Google product will not work here.',
-      }
-    }
-    return { provider: 'Gemini', planner: createGeminiPlanner(googleKey) }
+  return {
+    error: [
+      ...skipped,
+      'No usable key found. Put ANTHROPIC_API_KEY, GOOGLE_API_KEY or GROQ_API_KEY in apps/server/.env.',
+    ].join('\n'),
   }
-
-  return { error: 'No key found. Put ANTHROPIC_API_KEY or GOOGLE_API_KEY in apps/server/.env.' }
 }
 
 /** Two clips with a quiet stretch in the middle, enough to exercise trim, split, delete and move. */
@@ -94,7 +102,7 @@ async function main() {
   } catch (error) {
     // An AgentError is the model being refused or declining, which is a result worth reading.
     // Anything else is the call itself failing.
-    if (error instanceof AgentConfigError) {
+    if (error instanceof AgentBusyError || error instanceof AgentConfigError) {
       console.error(error.message)
       process.exit(1)
     }
