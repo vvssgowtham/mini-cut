@@ -12,6 +12,7 @@
  */
 
 import {
+  AgentBusyError,
   AgentConfigError,
   AgentError,
   createAnthropicPlanner,
@@ -94,7 +95,7 @@ async function main() {
   } catch (error) {
     // An AgentError is the model being refused or declining, which is a result worth reading.
     // Anything else is the call itself failing.
-    if (error instanceof AgentConfigError) {
+    if (error instanceof AgentBusyError || error instanceof AgentConfigError) {
       console.error(error.message)
       process.exit(1)
     }
