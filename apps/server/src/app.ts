@@ -6,6 +6,7 @@ import {
   AgentError,
   createAnthropicPlanner,
   createGeminiPlanner,
+  createGroqPlanner,
   planEdit,
   type EditPlanner,
 } from './agent'
@@ -23,12 +24,19 @@ export type AppOptions = {
  * safety of this feature is the schema and the timeline checks, not the vendor.
  */
 function plannerFromEnv(): EditPlanner | null {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY
-  if (anthropicKey) return createAnthropicPlanner(anthropicKey)
+  // Each provider's keys have a recognisable prefix, and a key that does not match one cannot
+  // work. Checking here means a stale or wrong value left in .env is skipped rather than claimed:
+  // without it, an old GOOGLE_API_KEY shadows a working GROQ_API_KEY further down the list and the
+  // agent fails with an authentication error for a provider the user is not trying to use.
+  const providers = [
+    { key: process.env.ANTHROPIC_API_KEY, prefix: 'sk-ant-', build: createAnthropicPlanner },
+    { key: process.env.GOOGLE_API_KEY, prefix: 'AIza', build: createGeminiPlanner },
+    { key: process.env.GROQ_API_KEY, prefix: 'gsk_', build: createGroqPlanner },
+  ]
 
-  const googleKey = process.env.GOOGLE_API_KEY
-  if (googleKey) return createGeminiPlanner(googleKey)
-
+  for (const { key, prefix, build } of providers) {
+    if (key?.startsWith(prefix)) return build(key)
+  }
   return null
 }
 
@@ -50,7 +58,7 @@ export function buildApp(options: AppOptions = {}) {
       return {
         ok: false,
         error:
-          'The agent is not configured. Set ANTHROPIC_API_KEY or GOOGLE_API_KEY in apps/server/.env.',
+          'The agent is not configured. Set ANTHROPIC_API_KEY, GOOGLE_API_KEY or GROQ_API_KEY in apps/server/.env.',
       }
     }
 

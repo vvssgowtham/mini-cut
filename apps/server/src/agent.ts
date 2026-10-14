@@ -251,7 +251,14 @@ export async function planEdit(planner: EditPlanner, request: AgentRequest): Pro
  * Plain fetch rather than another SDK: this is one request, and a megabyte of dependency to make it
  * is a poor trade.
  */
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.5-flash'
+/**
+ * Read when the planner is built, not when this module is imported.
+ *
+ * ES imports run before anything in the entry file, so .env had not been loaded yet at module
+ * scope — which meant the documented override silently did nothing from a file and only worked
+ * from a real environment variable.
+ */
+const geminiModel = () => process.env.GEMINI_MODEL ?? 'gemini-3.5-flash'
 
 /**
  * Gemini accepts a subset of JSON Schema, and rejects a declaration containing keywords it does not
@@ -292,7 +299,7 @@ type GeminiReply = {
   error?: { message?: string }
 }
 
-export function createGeminiPlanner(apiKey: string, model = GEMINI_MODEL): EditPlanner {
+export function createGeminiPlanner(apiKey: string, model = geminiModel()): EditPlanner {
   return async (request) => {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -342,5 +349,80 @@ export function createGeminiPlanner(apiKey: string, model = GEMINI_MODEL): EditP
     const call = body.candidates?.[0]?.content?.parts?.find((part) => part.functionCall)
     if (!call?.functionCall?.args) throw new AgentError('the model did not return an edit')
     return call.functionCall.args
+  }
+}
+
+/**
+ * The same job through Groq.
+ *
+ * A third provider costs one more function because the planner was already injected, and Groq
+ * speaks the OpenAI chat-completions dialect — so this differs from the Gemini version only in the
+ * envelope, not in what is asked or what is checked afterwards.
+ *
+ * Worth having for a different reason than Gemini: Groq is fast and its free tier is generous,
+ * which matters when a provider you were using starts rate limiting mid-demo.
+ */
+/** Read when the planner is built, for the same reason as the Gemini model above. */
+const groqModel = () => process.env.GROQ_MODEL ?? 'openai/gpt-oss-120b'
+
+/** OpenAI-dialect tool definition: the same shape, wrapped differently. */
+const GROQ_TOOL = {
+  type: 'function',
+  function: {
+    name: 'submit_edit',
+    description: 'Submit the timeline operations that carry out the instruction.',
+    parameters: GEMINI_FUNCTION.parameters,
+  },
+}
+
+type GroqReply = {
+  choices?: { message?: { tool_calls?: { function?: { arguments?: string } }[] } }[]
+  error?: { message?: string }
+}
+
+export function createGroqPlanner(apiKey: string, model = groqModel()): EditPlanner {
+  return async (request) => {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        max_tokens: MAX_TOKENS,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: promptFor(request) },
+        ],
+        tools: [GROQ_TOOL],
+        // Forced, so the model cannot answer in prose and leave nothing to parse.
+        tool_choice: { type: 'function', function: { name: GROQ_TOOL.function.name } },
+      }),
+    })
+
+    const body = (await response.json()) as GroqReply
+    const detail = body.error?.message ?? ''
+
+    if (isAuthStatus(response.status)) throw new AgentAuthError('Groq')
+    if (response.status === 429 || response.status === 503 || isBusy(detail)) {
+      throw new AgentBusyError('Groq', detail)
+    }
+    if (response.status === 404 || isMissingModel(detail) || /decommission/i.test(detail)) {
+      throw new AgentConfigError(
+        `Groq rejected the model "${model}": ${detail} Set GROQ_MODEL in apps/server/.env to override it.`,
+      )
+    }
+    if (!response.ok) {
+      throw new Error(`Groq returned ${response.status}: ${detail || 'no detail'}`)
+    }
+
+    const args = body.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments
+    if (!args) throw new AgentError('the model did not return an edit')
+
+    // Arguments arrive as a JSON string here, unlike Gemini's parsed object. A model that emits
+    // malformed JSON is the model failing, not the request being wrong.
+    try {
+      return JSON.parse(args) as unknown
+    } catch {
+      throw new AgentError('the model returned an edit that was not valid JSON')
+    }
   }
 }

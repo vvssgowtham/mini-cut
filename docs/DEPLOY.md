@@ -36,11 +36,11 @@ docker build -f apps/server/Dockerfile -t mini-cut-api .
 docker run -p 8080:8080 -e ANTHROPIC_API_KEY=sk-ant-... mini-cut-api
 ```
 
-One of `ANTHROPIC_API_KEY` or `GOOGLE_API_KEY` is required; Anthropic wins if both are set. Without
+One of `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` or `GROQ_API_KEY` is required, tried in that order. Without
 either the app still runs: the agent endpoint returns 503 and says it is not configured, rather than
 pretending to work.
 
-`GEMINI_MODEL` overrides the Gemini model. Worth knowing because Google retires models on its own
+`GEMINI_MODEL` and `GROQ_MODEL` override the model for their provider. Worth knowing because Google retires models on its own
 schedule: when that happens the agent returns a 503 carrying Google's own message, which names the
 replacement to put in this variable.
 

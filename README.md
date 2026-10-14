@@ -18,12 +18,12 @@ is not configured.
 To check the agent without opening the editor:
 
 ```bash
-cp apps/server/.env.example apps/server/.env   # add ANTHROPIC_API_KEY or GOOGLE_API_KEY
+cp apps/server/.env.example apps/server/.env   # add any one provider key
 npm run agent:try -w @mini-cut/server -- "remove the silent parts"
 ```
 
-Either Claude or Gemini works — the planner is injected, so a second provider is a second function
-rather than a second agent, and whatever either returns is validated identically. The safety of this
+Claude, Gemini or Groq — the planner is injected, so another provider is another function rather
+than another agent, and whatever any of them returns is validated identically. The safety of this
 feature is the schema and the timeline checks, not the vendor.
 
 It runs one instruction against a fixed sample timeline and prints the operations the model
