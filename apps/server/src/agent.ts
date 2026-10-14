@@ -96,6 +96,21 @@ export class AgentConfigError extends Error {
   }
 }
 
+/**
+ * The provider is busy or rate limiting, and the same request may well succeed shortly.
+ *
+ * Distinct from a configuration failure because the remedy is to wait, not to change anything. The
+ * first version of this classifier matched the word "model" anywhere in the reply, so "this model
+ * is experiencing high demand" was reported as a retired model and sent the user to edit a setting
+ * that was already correct.
+ */
+export class AgentBusyError extends Error {
+  constructor(provider: string, detail: string) {
+    super(`${provider} is busy right now: ${detail} Try again in a moment.`)
+    this.name = 'AgentBusyError'
+  }
+}
+
 /** The provider refused the credentials. Never carries the key or the provider's raw response. */
 export class AgentAuthError extends AgentConfigError {
   constructor(provider: string) {
@@ -126,6 +141,16 @@ function promptFor(request: AgentRequest): string {
   ]
     .filter(Boolean)
     .join('\n\n')
+}
+
+/** Busy, rate limited or temporarily overloaded — worth retrying, not worth reconfiguring. */
+function isBusy(detail: string): boolean {
+  return /high demand|overload|rate.?limit|quota|try again later|temporarily/i.test(detail)
+}
+
+/** The named model is gone or was never there. */
+function isMissingModel(detail: string): boolean {
+  return /no longer available|not found|does not exist|not supported|unknown model/i.test(detail)
 }
 
 /** 401 and 403 mean the credentials, whichever provider said so. */
@@ -226,7 +251,7 @@ export async function planEdit(planner: EditPlanner, request: AgentRequest): Pro
  * Plain fetch rather than another SDK: this is one request, and a megabyte of dependency to make it
  * is a poor trade.
  */
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.8-flash'
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.5-flash'
 
 /**
  * Gemini accepts a subset of JSON Schema, and rejects a declaration containing keywords it does not
@@ -296,10 +321,16 @@ export function createGeminiPlanner(apiKey: string, model = GEMINI_MODEL): EditP
     if (isAuthStatus(response.status) || /api[ _-]?key/i.test(detail)) {
       throw new AgentAuthError('Gemini')
     }
-    // A retired model is configuration, and the provider's own message names the replacement — far
-    // more useful than anything this code could invent, so it is passed through rather than hidden
-    // behind "unavailable". Models are retired on Google's schedule, so this will recur.
-    if (response.status === 404 || /\bmodel\b/i.test(detail)) {
+    // Order matters: "this model is experiencing high demand" mentions the model but is not a
+    // problem with the model, so being busy is ruled out before anything is blamed on the name.
+    if (response.status === 429 || response.status === 503 || isBusy(detail)) {
+      throw new AgentBusyError('Gemini', detail)
+    }
+
+    // A model that is gone is configuration, and the provider's own message names the
+    // replacement — more useful than anything this code could invent, so it passes through rather
+    // than hiding behind "unavailable". Models are retired on Google's schedule, so this recurs.
+    if (response.status === 404 || isMissingModel(detail)) {
       throw new AgentConfigError(
         `Gemini rejected the model "${model}": ${detail} Set GEMINI_MODEL in apps/server/.env to override it.`,
       )

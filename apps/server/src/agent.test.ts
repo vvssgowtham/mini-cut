@@ -9,7 +9,13 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app'
 import type { AgentRequest } from '@mini-cut/shared'
-import { AgentAuthError, AgentConfigError, createGeminiPlanner, type EditPlanner } from './agent'
+import {
+  AgentAuthError,
+  AgentBusyError,
+  AgentConfigError,
+  createGeminiPlanner,
+  type EditPlanner,
+} from './agent'
 
 const clips = [
   { id: 'a', sourceIn: 0, sourceOut: 10_000, start: 0 },
@@ -369,5 +375,59 @@ describe('a retired model', () => {
 
     expect(response.statusCode).toBe(503)
     expect(response.json().error).toMatch(/rejected the model/)
+  })
+})
+
+describe('telling a busy model from a missing one', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function replyWith(status: number, message: string) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: { message } }), { status })),
+    )
+    return createGeminiPlanner('AIzaFine', 'gemini-test')({ instruction: 'cut it', clips })
+  }
+
+  it('treats high demand as busy, not as a bad model name', async () => {
+    // The message mentions the model but is not about the model: classifying it as configuration
+    // sent the user to change a setting that was already correct.
+    const failure = await replyWith(
+      503,
+      'This model is currently experiencing high demand. Please try again later.',
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentBusyError)
+    expect((failure as Error).message).toMatch(/try again/i)
+    expect((failure as Error).message).not.toMatch(/GEMINI_MODEL/)
+  })
+
+  it('treats a rate limit as busy', async () => {
+    const failure = await replyWith(429, 'Quota exceeded.').catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentBusyError)
+  })
+
+  it('still reports a model that is genuinely gone', async () => {
+    const failure = await replyWith(
+      404,
+      'This model models/old is no longer available. Use models/new.',
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentConfigError)
+    expect((failure as Error).message).toMatch(/GEMINI_MODEL/)
+  })
+
+  it('asks the caller to retry rather than to reconfigure', async () => {
+    const app = appWith(async () => {
+      throw new AgentBusyError('Gemini', 'High demand.')
+    })
+
+    const response = await post(app, { instruction: 'cut it', clips })
+
+    expect(response.statusCode).toBe(503)
+    expect(response.headers['retry-after']).toBe('20')
   })
 })

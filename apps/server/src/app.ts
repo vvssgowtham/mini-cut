@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import { agentRequestSchema, type AgentResponse, type HealthResponse } from '@mini-cut/shared'
 import {
+  AgentBusyError,
   AgentConfigError,
   AgentError,
   createAnthropicPlanner,
@@ -64,6 +65,13 @@ export function buildApp(options: AppOptions = {}) {
     } catch (error) {
       // An unusable edit is the model's failure, not the caller's, so it is 422 rather than 400.
       // The message is safe to show: it describes the edit, never the key or the upstream call.
+      // Busy is worth retrying, so it is 503 with a Retry-After rather than something that looks
+      // like the request itself was wrong.
+      if (error instanceof AgentBusyError) {
+        reply.code(503).header('retry-after', '20')
+        return { ok: false, error: error.message }
+      }
+
       // Configuration, not a transient outage, so it reads as 503 and says what to change rather
       // than sending someone to look at their network.
       if (error instanceof AgentConfigError) {
