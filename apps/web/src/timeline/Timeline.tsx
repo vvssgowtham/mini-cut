@@ -136,6 +136,7 @@ export function Timeline({
     if (!canvas) return
 
     const resize = () => {
+      rectRef.current = null
       const dpr = window.devicePixelRatio || 1
       const widthPx = canvas.clientWidth
       canvas.width = Math.round(widthPx * dpr)
@@ -174,8 +175,19 @@ export function Timeline({
     }
   }, [])
 
+  /**
+   * The canvas position, read once and remembered.
+   *
+   * getBoundingClientRect forces the browser to settle layout before it can answer. Calling it from
+   * a pointermove handler means doing that at pointer frequency — well over a hundred times a
+   * second on a trackpad — which is what made dragging feel heavy. The rect only changes when the
+   * element moves, so it is cached and thrown away when it might have.
+   */
+  const rectRef = useRef<DOMRect | null>(null)
+
   const localPoint = (event: { clientX: number; clientY: number }) => {
-    const rect = canvasRef.current?.getBoundingClientRect()
+    rectRef.current ??= canvasRef.current?.getBoundingClientRect() ?? null
+    const rect = rectRef.current
     return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) }
   }
 
@@ -265,6 +277,9 @@ export function Timeline({
 
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
+      // Otherwise the browser begins selecting the surrounding page text mid-drag.
+      event.preventDefault()
+
       const { x, y } = localPoint(event)
       const viewport = viewportRef.current
       const clips = projectRef.current.tracks[0]?.clips ?? []

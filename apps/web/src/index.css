@@ -222,6 +222,9 @@ body {
   display: block;
   width: 100%;
   touch-action: none;
+  /* A drag across the canvas would otherwise select the text around it. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .timeline canvas:focus-visible {
