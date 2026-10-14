@@ -257,3 +257,65 @@ describe('keyboard shortcuts without focusing the canvas', () => {
     expect(playhead.ms).toBe(0)
   })
 })
+
+describe('wheel', () => {
+  /** Dispatched natively, because React's synthetic wheel events are passive. */
+  function wheel(target: Element, init: WheelEventInit) {
+    const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init })
+    target.dispatchEvent(event)
+    return event
+  }
+
+  function canvas() {
+    const element = document.querySelector('canvas')
+    if (!element) throw new Error('no canvas rendered')
+    return element
+  }
+
+  it('stops the page scrolling while the timeline pans', () => {
+    // Without this the page moves at the same time, which reads as the editor shaking.
+    renderTimeline(false)
+    flushFrames()
+
+    expect(wheel(canvas(), { deltaY: 120 }).defaultPrevented).toBe(true)
+  })
+
+  it('stops the browser zooming when ctrl is held', () => {
+    renderTimeline(false)
+    flushFrames()
+
+    expect(wheel(canvas(), { deltaY: -120, ctrlKey: true }).defaultPrevented).toBe(true)
+  })
+
+  it('pans the view', () => {
+    const calls = () => vi.mocked(drawTimeline).mock.calls
+    renderTimeline(false)
+    flushFrames()
+    const before = calls()[calls().length - 1]?.[1].viewport.offsetMs ?? 0
+
+    wheel(canvas(), { deltaY: 300 })
+    flushFrames()
+
+    expect(calls()[calls().length - 1]?.[1].viewport.offsetMs).toBeGreaterThan(before)
+  })
+
+  it('zooms rather than pans when ctrl is held', () => {
+    const calls = () => vi.mocked(drawTimeline).mock.calls
+    renderTimeline(false)
+    flushFrames()
+    const before = calls()[calls().length - 1]?.[1].viewport.pxPerMs ?? 0
+
+    wheel(canvas(), { deltaY: -200, ctrlKey: true })
+    flushFrames()
+
+    expect(calls()[calls().length - 1]?.[1].viewport.pxPerMs).toBeGreaterThan(before)
+  })
+
+  it('stops listening once unmounted', () => {
+    const { unmount } = renderTimeline(false)
+    flushFrames()
+    unmount()
+
+    expect(wheel(document.body, { deltaY: 120 }).defaultPrevented).toBe(false)
+  })
+})
