@@ -65,7 +65,12 @@ export const MAX_OPERATIONS = 100
 export const agentPlanSchema = z.object({
   /** One plain sentence for the preview, in the user's terms: "Removes the first 10 seconds." */
   summary: z.string().min(1).max(300),
-  operations: z.array(agentOperationSchema).min(1).max(MAX_OPERATIONS),
+  /**
+   * Empty is allowed, and means the model understood the request and cannot carry it out. The
+   * prompt asks for exactly that, so rejecting it here turned the model explaining itself into
+   * "unusable edit" and threw away the explanation.
+   */
+  operations: z.array(agentOperationSchema).max(MAX_OPERATIONS),
 })
 
 export type AgentOperation = z.infer<typeof agentOperationSchema>

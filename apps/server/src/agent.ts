@@ -167,6 +167,12 @@ export async function planEdit(planner: EditPlanner, request: AgentRequest): Pro
     throw new AgentError(`the model returned an unusable edit: ${parsed.error.issues[0]?.message}`)
   }
 
+  // The model saying "I cannot do that" is an answer, not a malfunction — so its own sentence is
+  // what reaches the user, rather than a generic failure.
+  if (parsed.data.operations.length === 0) {
+    throw new AgentError(parsed.data.summary)
+  }
+
   validateAgainstTimeline(parsed.data.operations, request.clips)
   return parsed.data
 }

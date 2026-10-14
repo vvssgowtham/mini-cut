@@ -107,7 +107,6 @@ describe('rejecting the model', () => {
       'a split exactly on the clip edge',
       { summary: 'x', operations: [{ type: 'split', clipId: 'a', atMs: 0 }] },
     ],
-    ['an empty operations array', { summary: 'cannot do that', operations: [] }],
   ]
 
   for (const [label, reply] of hostile) {
@@ -199,5 +198,19 @@ describe('silences', () => {
     })
 
     expect(response.statusCode).toBe(400)
+  })
+})
+
+describe('when the model cannot carry out the instruction', () => {
+  it('passes its explanation through rather than a generic failure', async () => {
+    const app = appWith(async () => ({
+      summary: 'There is no audio on this timeline, so there are no silences to remove.',
+      operations: [],
+    }))
+
+    const response = await post(app, { instruction: 'remove the silences', clips })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json().error).toMatch(/no audio on this timeline/)
   })
 })
