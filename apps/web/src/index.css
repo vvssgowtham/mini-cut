@@ -35,21 +35,15 @@
   --on-primary: #ffffff;
 
   /*
-   * The editor well: the viewer and timeline, which are not marketplace surfaces.
+   * The editor well: the viewer surround and the timeline.
    *
-   * Cool-toned rather than neutral black. A warm grey next to footage makes the picture look cold,
-   * and a cool one makes it look warm; the convention in editing tools is to lean cool so that
-   * skin tones read correctly against the surround. These are the only dark values in the system,
-   * and Rausch carries straight through them so the brand does not stop at the chrome.
+   * Light, like everything else. A portrait video in a wide frame is mostly surround, so this is a
+   * large share of the screen and a dark slab there would dominate the page.
+   *
+   * The trade is real and worth naming: a light surround makes footage read darker than it is, so
+   * judge exposure in a player rather than here.
    */
-  --viewer: #000000;
-  --well: #10141a;
-  --well-panel: #171c24;
-  --well-raised: #222932;
-  --well-raised-top: #2a323d;
-  --well-line: #39424f;
-  --well-text: #e8ecf1;
-  --well-muted: #8a94a3;
+  --viewer: var(--surface-soft);
 
   /* Spacing */
   --space-xxs: 2px;
@@ -190,11 +184,11 @@ body {
 
 .zone.timeline {
   border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-top: 1px solid var(--hairline);
 }
 
-/* Hairlines belong between light bands; the well separates itself. */
-.zone.timeline + .zone,
-.zone.viewer + .zone.timeline {
+/* The well is one surface, so the band below it does not need a second rule under the rounding. */
+.zone.timeline + .zone {
   border-top: 0;
 }
 
@@ -203,12 +197,13 @@ body {
   block-size: min(58vh, 460px);
   inline-size: auto;
   max-inline-size: 100%;
-  background: var(--viewer);
+  /* The element's own backdrop, behind any letterboxing the browser adds. */
+  background: var(--surface-soft);
   cursor: pointer;
 }
 
 .viewer-empty {
-  color: var(--well-muted);
+  color: var(--muted-soft);
   text-align: center;
   padding: var(--space-xxl) var(--space-lg);
   max-width: 44ch;
@@ -219,7 +214,7 @@ body {
 
 .timeline {
   padding: 0;
-  background: var(--well-panel);
+  background: var(--surface-soft);
   overflow: hidden;
 }
 
@@ -229,9 +224,7 @@ body {
   touch-action: none;
 }
 
-/* On the dark well, the light focus ring is the one that reads. */
 .timeline canvas:focus-visible {
-  outline: 2px solid var(--well-text);
   outline-offset: -3px;
 }
 

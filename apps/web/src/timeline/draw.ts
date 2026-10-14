@@ -36,25 +36,26 @@ export type TimelineTheme = {
 /**
  * Mirrors the tokens in `index.css`; a canvas cannot read CSS variables.
  *
- * These are the well's values, not the page's: cool-toned darks, because a warm surround makes
- * footage look cold and the convention in editing tools is to lean cool so skin tones read
- * correctly. Rausch carries through from the light chrome and marks the two things that are about
- * position — the playhead and the selected clip — so the brand does not stop at the frame.
+ * Light, like the rest of the system. Clips are white cards on a soft grey track — the same
+ * white-on-white separation the design language uses in place of layered elevation — with a
+ * hairline border doing the work a shadow would, since the system has only one shadow tier and
+ * spends it elsewhere. Rausch marks the two things that are about position: the playhead and the
+ * selected clip.
  */
 export const defaultTheme: TimelineTheme = {
-  rulerBackground: '#10141a',
-  rulerLine: '#39424f',
-  rulerText: '#8a94a3',
-  trackBackground: '#171c24',
-  // Clips are raised surfaces on the track; the gradient is slight, enough to read as lifted
-  // rather than as a hole cut out of it.
-  clipTop: '#2a323d',
-  clipBottom: '#222932',
-  clipStroke: '#3c4654',
-  clipText: '#e8ecf1',
+  rulerBackground: '#f2f2f2',
+  rulerLine: '#c1c1c1',
+  rulerText: '#6a6a6a',
+  trackBackground: '#f7f7f7',
+  clipTop: '#ffffff',
+  clipBottom: '#fbfbfb',
+  // Darker than the system's hairline: at 1px on a light track this is all that separates a clip
+  // from its background, so it carries the weight a border and a shadow would share elsewhere.
+  clipStroke: '#c1c1c1',
+  clipText: '#222222',
   clipSelectedStroke: '#ff385c',
-  waveform: '#7f8fa3',
-  handle: '#6a7585',
+  waveform: '#929292',
+  handle: '#6a6a6a',
   playhead: '#ff385c',
 }
 

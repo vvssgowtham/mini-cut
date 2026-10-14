@@ -106,11 +106,9 @@ canvas, the 2–48px spacing scale, the 4/8/14/20px radius ladder, and the syste
 it either has that shadow or none, because depth is meant to come from surface separation rather
 than layered elevation.
 
-One deliberate departure: the viewer and timeline sit in a dark, cool-toned well inside the light
-frame. A video is judged against what surrounds it — a white surround makes every frame read darker
-than it is, and a warm grey makes the picture look cold, which is why editing tools lean cool. The
-system has no opinion about video because it was never designed for it, so the well follows the
-medium while Rausch carries through it so the brand does not stop at the chrome.
+The system is applied throughout, including the viewer surround and the timeline. One trade worth
+naming: a light surround makes footage read darker than it is, which is why editing tools are
+usually dark — so judge exposure in a player rather than here.
 
 ## Architecture
 
