@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useSyncExternalStore } from 'react'
-import { joinAvailability, splitAvailability } from '../editor/clipActions'
+import { closeGapAvailability, joinAvailability, splitAvailability } from '../editor/clipActions'
 import type { CommandBus } from '../editor/history'
 import type { Project } from '../editor/types'
 import type { PlayheadStore } from '../media/playhead'
@@ -42,6 +42,7 @@ export function ClipActions({
   // Read once per render for the tooltip; the boolean above is what drives re-rendering.
   const split = splitAvailability(project, selectedClipId, playhead.ms)
   const join = joinAvailability(project, selectedClipId)
+  const closeGap = closeGapAvailability(project, selectedClipId)
 
   return (
     <>
@@ -67,9 +68,26 @@ export function ClipActions({
           onSelect(join.command.mergedId)
         }}
         disabled={disabled || !join.available}
-        title={join.available ? 'Join with the next clip (J)' : join.reason}
+        title={join.available ? 'Put the two halves of a split back together (J)' : join.reason}
       >
-        Join
+        Rejoin
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          if (!closeGap.available) return
+          // One group: a ripple moves every later clip, and all of it is one ctrl+Z.
+          bus.executeGroup(closeGap.commands)
+        }}
+        disabled={disabled || !closeGap.available}
+        title={
+          closeGap.available
+            ? `Pull this clip back ${Math.round(closeGap.closedMs / 100) / 10}s and bring the rest with it`
+            : closeGap.reason
+        }
+      >
+        Close gap
       </button>
 
       <button
