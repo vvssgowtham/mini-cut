@@ -23,6 +23,7 @@ import type { Waveform } from '../media/waveform'
 import { clipEnd, type Clip, type Ms } from '../editor/types'
 import { drawTimeline, TIMELINE_HEIGHT_PX } from './draw'
 import { hitTest, type Hit } from './hitTest'
+import { clampStart } from '../editor/placement'
 import { applyKeyAction, keyToAction } from './keyboard'
 import {
   clampOffset,
@@ -293,7 +294,10 @@ export function Timeline({
       // Always derived from `original`, so the preview cannot drift as the pointer moves.
       let preview = original
       if (drag.hit.kind === 'body') {
-        preview = { ...original, start: Math.max(0, original.start + deltaMs) }
+        // Clamped against the neighbours: a clip dropped on top of another produces a timeline
+        // that draws fine and then refuses to export.
+        const clips = projectRef.current.tracks[0]?.clips ?? []
+        preview = { ...original, start: clampStart(clips, original.id, original.start + deltaMs) }
       } else if (drag.hit.kind === 'trim-start') {
         const sourceIn = Math.min(original.sourceOut - 1, Math.max(0, original.sourceIn + deltaMs))
         preview = { ...original, sourceIn, start: Math.max(0, original.start + deltaMs) }
