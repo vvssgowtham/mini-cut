@@ -23,7 +23,7 @@ import type { Waveform } from '../media/waveform'
 import { clipEnd, type Clip, type Ms } from '../editor/types'
 import { drawTimeline, TIMELINE_HEIGHT_PX } from './draw'
 import { hitTest, type Hit } from './hitTest'
-import { clampStart } from '../editor/placement'
+import { clampStart, maxEndFor } from '../editor/placement'
 import { applyKeyAction, keyToAction } from './keyboard'
 import {
   clampOffset,
@@ -302,9 +302,13 @@ export function Timeline({
         const sourceIn = Math.min(original.sourceOut - 1, Math.max(0, original.sourceIn + deltaMs))
         preview = { ...original, sourceIn, start: Math.max(0, original.start + deltaMs) }
       } else {
+        // Clamped so the clip cannot grow into the one after it.
+        const siblings = projectRef.current.tracks[0]?.clips ?? []
+        const maxDuration = maxEndFor(siblings, original.id) - original.start
+        const wanted = Math.max(original.sourceIn + 1, original.sourceOut + deltaMs)
         preview = {
           ...original,
-          sourceOut: Math.max(original.sourceIn + 1, original.sourceOut + deltaMs),
+          sourceOut: Math.min(wanted, original.sourceIn + maxDuration),
         }
       }
 

@@ -296,14 +296,21 @@ describe('join', () => {
   })
 
   it('refuses halves with a gap on the timeline', () => {
-    const moved = apply(splitProject(), {
-      type: 'move',
-      trackId: 't1',
-      clipId: 'a2',
-      start: 1500,
-    }).project
+    // Built directly rather than with a move: clips may not overlap, and there is no room to slide
+    // 'a2' right without running into 'b'.
+    const base = splitProject()
+    const track = base.tracks[0]!
+    const withGap = {
+      ...base,
+      tracks: [
+        {
+          ...track,
+          clips: track.clips.map((c) => (c.id === 'a2' ? { ...c, start: c.start + 500 } : c)),
+        },
+      ],
+    }
 
-    expect(() => apply(moved, joinA)).toThrow(/gap between them/)
+    expect(() => apply(withGap, joinA)).toThrow(/gap between them/)
   })
 
   it('refuses an id that is already taken', () => {

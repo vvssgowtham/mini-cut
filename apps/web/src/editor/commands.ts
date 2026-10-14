@@ -132,7 +132,10 @@ export function apply(project: Project, op: Op): ApplyResult {
       }
 
       const clips = [...track.clips]
-      clips[index] = { ...clip, sourceIn: op.sourceIn, sourceOut: op.sourceOut }
+      const trimmed = { ...clip, sourceIn: op.sourceIn, sourceOut: op.sourceOut }
+      // A trim can lengthen as well as shorten, so it can run into the next clip.
+      assertNoOverlap(track.clips, trimmed)
+      clips[index] = trimmed
 
       return {
         project: replaceTrack(project, { ...track, clips }),
@@ -156,7 +159,9 @@ export function apply(project: Project, op: Op): ApplyResult {
       }
 
       const clips = [...track.clips]
-      clips[index] = { ...clip, start: op.start }
+      const moved = { ...clip, start: op.start }
+      assertNoOverlap(track.clips, moved)
+      clips[index] = moved
 
       return {
         project: replaceTrack(project, { ...track, clips }),
@@ -239,6 +244,7 @@ export function apply(project: Project, op: Op): ApplyResult {
       if (track.clips.some((existing) => existing.id === op.clip.id)) {
         throw new Error(`clip ${op.clip.id} already exists on track ${track.id}`)
       }
+      assertNoOverlap(track.clips, op.clip)
 
       const clips = [...track.clips]
       clips.splice(op.index, 0, op.clip)
@@ -349,6 +355,28 @@ export function apply(project: Project, op: Op): ApplyResult {
 }
 
 // --- helpers. The tests call none of them; they exist to keep `apply` readable. ---
+
+/**
+ * Reject a placement that would sit on top of another clip.
+ *
+ * A single track cannot show two clips at once, so an overlap has no meaning. Enforced here rather
+ * than only in the UI, because the agent and a restored project reach the model by other routes,
+ * and an invariant checked in one caller is not an invariant.
+ */
+function assertNoOverlap(clips: readonly Clip[], candidate: Clip): void {
+  const candidateEnd = candidate.start + (candidate.sourceOut - candidate.sourceIn)
+
+  for (const other of clips) {
+    if (other.id === candidate.id) continue
+    const otherEnd = other.start + (other.sourceOut - other.sourceIn)
+    // Half-open ranges: clips that merely touch are fine.
+    if (candidate.start < otherEnd && other.start < candidateEnd) {
+      throw new Error(
+        `clip ${candidate.id} at ${candidate.start}..${candidateEnd} would overlap ${other.id}`,
+      )
+    }
+  }
+}
 
 /** Find a track by id, or throw. */
 export function findTrack(project: Project, trackId: string): Track {

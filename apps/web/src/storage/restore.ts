@@ -9,6 +9,7 @@
 
 import { CURRENT_PROJECT_VERSION, projectSchema, versionProbeSchema } from '@mini-cut/shared'
 import type { StoredProject } from '@mini-cut/shared'
+import { findOverlaps, resolveOverlaps } from '../editor/placement'
 import type { Project } from '../editor/types'
 
 /**
@@ -54,7 +55,25 @@ export function parseStoredProject(raw: unknown): Project {
   if (!parsed.success) {
     throw new RestoreError('malformed', parsed.error.issues[0]?.message ?? 'not a valid project')
   }
-  return parsed.data
+
+  return healOverlaps(parsed.data)
+}
+
+/**
+ * Push apart any clips that sit on top of each other.
+ *
+ * Overlap is prevented at the model now, but projects saved before that are still out there, and
+ * one of them would load into an editor that refuses to export it. Healing on the way in is better
+ * than handing someone a timeline and telling them to repair it: later clips slide right to sit
+ * flush, so every frame of footage is kept.
+ */
+function healOverlaps(project: Project): Project {
+  if (!project.tracks.some((track) => findOverlaps(track.clips).length > 0)) return project
+
+  return {
+    ...project,
+    tracks: project.tracks.map((track) => ({ ...track, clips: resolveOverlaps(track.clips) })),
+  }
 }
 
 /** Parse, or fall back to `fallback` when the stored value is junk. A newer save still throws. */

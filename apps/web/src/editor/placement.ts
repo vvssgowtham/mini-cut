@@ -61,3 +61,39 @@ export function findOverlaps(clips: readonly Clip[]): { left: Clip; right: Clip 
   }
   return overlaps
 }
+
+/**
+ * The furthest a clip's end may extend before it would run into the clip after it.
+ *
+ * Dragging the right-hand trim handle grows a clip, so it needs the same guard as moving one.
+ */
+export function maxEndFor(clips: readonly Clip[], clipId: string): Ms {
+  const moving = clips.find((clip) => clip.id === clipId)
+  if (!moving) return Number.POSITIVE_INFINITY
+
+  const after = clips
+    .filter((clip) => clip.id !== clipId && clip.start >= clipEnd(moving))
+    .sort((a, b) => a.start - b.start)[0]
+
+  return after ? after.start : Number.POSITIVE_INFINITY
+}
+
+/**
+ * Push overlapping clips apart so none sits on top of another.
+ *
+ * For healing a project saved before overlap was prevented. Later clips move right to sit flush
+ * with the one before, which keeps every frame of footage — truncating would silently discard
+ * something the user recorded, and that is a worse way to be wrong.
+ */
+export function resolveOverlaps(clips: readonly Clip[]): Clip[] {
+  const ordered = [...clips].sort((a, b) => a.start - b.start)
+  const resolved: Clip[] = []
+  let earliestFree = 0
+
+  for (const clip of ordered) {
+    const start = Math.max(clip.start, earliestFree)
+    resolved.push(start === clip.start ? clip : { ...clip, start })
+    earliestFree = start + (clip.sourceOut - clip.sourceIn)
+  }
+  return resolved
+}
