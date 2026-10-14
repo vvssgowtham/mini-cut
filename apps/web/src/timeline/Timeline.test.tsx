@@ -12,7 +12,7 @@
  */
 
 import { StrictMode } from 'react'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CommandBus } from '../editor/history'
 import { drawTimeline } from './draw'
@@ -102,8 +102,8 @@ function renderTimeline(strict: boolean) {
   const playhead = new PlayheadStore()
   const ui = <Timeline bus={bus} playhead={playhead} selectedClipId={null} onSelect={() => {}} />
 
-  render(strict ? <StrictMode>{ui}</StrictMode> : ui)
-  return { bus, playhead }
+  const { unmount } = render(strict ? <StrictMode>{ui}</StrictMode> : ui)
+  return { bus, playhead, unmount }
 }
 
 describe('draw loop', () => {
@@ -187,5 +187,73 @@ describe('following the playhead', () => {
     flushFrames()
 
     expect(lastViewport()?.offsetMs).toBe(before)
+  })
+})
+
+describe('keyboard shortcuts without focusing the canvas', () => {
+  /**
+   * These were bound to the canvas, so they did nothing until it was clicked — and stopped working
+   * again the moment focus moved to a button. Nothing on screen said so.
+   */
+  it('scrubs with the arrow keys while focus is on the body', () => {
+    const { playhead } = renderTimeline(false)
+    flushFrames()
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+    })
+
+    expect(playhead.ms).toBeGreaterThan(0)
+  })
+
+  it('still works when focus is on a button elsewhere on the page', () => {
+    const button = document.createElement('button')
+    document.body.appendChild(button)
+    const { playhead } = renderTimeline(false)
+    flushFrames()
+    button.focus()
+
+    act(() => {
+      fireEvent.keyDown(button, { key: 'ArrowRight' })
+    })
+
+    expect(playhead.ms).toBeGreaterThan(0)
+    button.remove()
+  })
+
+  it('jumps to the end with the End key', () => {
+    const { playhead } = renderTimeline(false)
+    flushFrames()
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'End' })
+    })
+
+    // The fixture's only clip runs 0..3000.
+    expect(playhead.ms).toBe(3000)
+  })
+
+  it('leaves keys alone while someone is typing in a field', () => {
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    const { playhead } = renderTimeline(false)
+    flushFrames()
+
+    act(() => {
+      fireEvent.keyDown(input, { key: 'ArrowRight' })
+    })
+
+    expect(playhead.ms).toBe(0)
+    input.remove()
+  })
+
+  it('stops listening once unmounted', () => {
+    const { playhead, unmount } = renderTimeline(false)
+    flushFrames()
+    unmount()
+
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+
+    expect(playhead.ms).toBe(0)
   })
 })
