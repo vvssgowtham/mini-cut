@@ -12,7 +12,7 @@
  */
 
 import {
-  AgentAuthError,
+  AgentConfigError,
   AgentError,
   createAnthropicPlanner,
   createGeminiPlanner,
@@ -94,7 +94,7 @@ async function main() {
   } catch (error) {
     // An AgentError is the model being refused or declining, which is a result worth reading.
     // Anything else is the call itself failing.
-    if (error instanceof AgentAuthError) {
+    if (error instanceof AgentConfigError) {
       console.error(error.message)
       process.exit(1)
     }

@@ -83,13 +83,21 @@ const EDIT_TOOL: Anthropic.Tool = {
 }
 
 /**
- * The provider refused the credentials.
+ * Something about the setup is wrong, rather than the service being down.
  *
  * Separate from a general failure because the remedy is completely different: "the editing service
  * is unavailable" sends someone looking at their network and their code, when the answer is one
- * wrong line in a file. It never carries the key or the provider's raw response.
+ * wrong line in a file.
  */
-export class AgentAuthError extends Error {
+export class AgentConfigError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AgentConfigError'
+  }
+}
+
+/** The provider refused the credentials. Never carries the key or the provider's raw response. */
+export class AgentAuthError extends AgentConfigError {
   constructor(provider: string) {
     super(
       `${provider} rejected the API key. Check the value in apps/server/.env — an expired key, or ` +
@@ -218,7 +226,7 @@ export async function planEdit(planner: EditPlanner, request: AgentRequest): Pro
  * Plain fetch rather than another SDK: this is one request, and a megabyte of dependency to make it
  * is a poor trade.
  */
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash'
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.8-flash'
 
 /**
  * Gemini accepts a subset of JSON Schema, and rejects a declaration containing keywords it does not
@@ -288,8 +296,16 @@ export function createGeminiPlanner(apiKey: string, model = GEMINI_MODEL): EditP
     if (isAuthStatus(response.status) || /api[ _-]?key/i.test(detail)) {
       throw new AgentAuthError('Gemini')
     }
+    // A retired model is configuration, and the provider's own message names the replacement — far
+    // more useful than anything this code could invent, so it is passed through rather than hidden
+    // behind "unavailable". Models are retired on Google's schedule, so this will recur.
+    if (response.status === 404 || /\bmodel\b/i.test(detail)) {
+      throw new AgentConfigError(
+        `Gemini rejected the model "${model}": ${detail} Set GEMINI_MODEL in apps/server/.env to override it.`,
+      )
+    }
     if (!response.ok) {
-      throw new Error(`Gemini returned ${response.status}: ${body.error?.message ?? 'no detail'}`)
+      throw new Error(`Gemini returned ${response.status}: ${detail || 'no detail'}`)
     }
 
     const call = body.candidates?.[0]?.content?.parts?.find((part) => part.functionCall)

@@ -9,7 +9,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app'
 import type { AgentRequest } from '@mini-cut/shared'
-import { AgentAuthError, createGeminiPlanner, type EditPlanner } from './agent'
+import { AgentAuthError, AgentConfigError, createGeminiPlanner, type EditPlanner } from './agent'
 
 const clips = [
   { id: 'a', sourceIn: 0, sourceOut: 10_000, start: 0 },
@@ -321,5 +321,53 @@ describe('Gemini key rejection', () => {
     vi.stubGlobal('fetch', withFetch(503, { error: { message: 'model is overloaded' } }))
 
     await expect(createGeminiPlanner('AIzaFine')(sample)).rejects.toThrow(/overloaded/)
+  })
+})
+
+describe('a retired model', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("passes through the provider's message, which names the replacement", async () => {
+    // Models are retired on Google's schedule, so this recurs; the useful detail is theirs.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                message:
+                  'This model models/gemini-old is no longer available. Please update your code to use models/gemini-new.',
+              },
+            }),
+            { status: 404 },
+          ),
+      ),
+    )
+
+    const failure = await createGeminiPlanner(
+      'AIzaFine',
+      'gemini-old',
+    )({
+      instruction: 'cut it',
+      clips,
+    }).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentConfigError)
+    expect((failure as Error).message).toMatch(/gemini-new/)
+    expect((failure as Error).message).toMatch(/GEMINI_MODEL/)
+  })
+
+  it('reports it as configuration rather than an outage', async () => {
+    const app = appWith(async () => {
+      throw new AgentConfigError('Gemini rejected the model "x": gone.')
+    })
+
+    const response = await post(app, { instruction: 'cut it', clips })
+
+    expect(response.statusCode).toBe(503)
+    expect(response.json().error).toMatch(/rejected the model/)
   })
 })
