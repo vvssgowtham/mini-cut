@@ -62,6 +62,14 @@ beforeEach(() => {
     get: () => 800,
   })
 
+  // jsdom implements no pointer capture at all. Needed by every test that presses on a clip, which
+  // is every test of them now that the canvas has a width and hit-testing actually resolves.
+  Object.assign(HTMLElement.prototype, {
+    setPointerCapture: () => {},
+    releasePointerCapture: () => {},
+    hasPointerCapture: () => false,
+  })
+
   frames = new Map()
   nextFrameId = 1
   fillRectCalls = 0
@@ -357,10 +365,6 @@ describe('dragging', () => {
     renderTimeline(false)
     flushFrames()
     const canvas = canvasElement()
-    Object.assign(canvas, {
-      setPointerCapture: () => {},
-      releasePointerCapture: () => {},
-    })
     const reads = countRectReads(canvas)
 
     pointer(canvas, 'pointerdown', { clientX: 10, clientY: 50 })
