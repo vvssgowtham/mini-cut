@@ -11,9 +11,20 @@ npm install
 npm run dev     # web on :5173, API on :3001
 ```
 
-Export needs an API-free browser; the agent needs `ANTHROPIC_API_KEY` (see
+Export needs a cross-origin isolated page; the agent needs `ANTHROPIC_API_KEY` (see
 [docs/DEPLOY.md](docs/DEPLOY.md)). Without the key everything else still works and the agent says it
 is not configured.
+
+To check the agent without opening the editor:
+
+```bash
+cp apps/server/.env.example apps/server/.env   # add your key
+npm run agent:try -w @mini-cut/server -- "remove the silent parts"
+```
+
+It runs one instruction against a fixed sample timeline and prints the operations the model
+returned. The test suite stubs the model, so it proves bad output is rejected but says nothing about
+whether a real reply is any good — that needs a round trip.
 
 ## The interesting problems
 
