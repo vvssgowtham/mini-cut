@@ -243,10 +243,27 @@ describe('join', () => {
     expect(apply(joined, inverse).project).toEqual(split)
   })
 
-  it('refuses clips that are not next to each other', () => {
+  it('refuses clips that are not continuous, whatever their order in the array', () => {
+    // 'a1' and 'b' are separate media with a cut between them. Adjacency is judged on the
+    // timeline now, so the refusal names the real reason rather than an array position.
     expect(() => apply(splitProject(), { ...joinA, leftId: 'a1', rightId: 'b' })).toThrow(
-      /next to each other/,
+      /a cut was made|gap between them|different media/,
     )
+  })
+
+  it('joins clips that touch on the timeline but are not neighbours in the array', () => {
+    // Storage order reversed; the two halves still meet at 1000 ms.
+    const split = splitProject()
+    const track = split.tracks[0]!
+    const reordered = {
+      ...split,
+      tracks: [{ ...track, clips: [...track.clips].reverse() }],
+    }
+
+    const { project } = apply(reordered, joinA)
+
+    expect(clipIds(project, 't1')).toContain('whole')
+    expect(getClip(project, 't1', 'whole')).toMatchObject({ sourceIn: 1000, sourceOut: 3000 })
   })
 
   it('refuses clips from different media', () => {

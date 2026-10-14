@@ -152,3 +152,41 @@ describe('join', () => {
     }
   })
 })
+
+describe('join across storage order', () => {
+  /**
+   * Clips stored out of timeline order, which is the normal state once anything has been moved:
+   * `track.clips` keeps insertion order, not start order.
+   *
+   *   timeline:  0 ──── 2000 ──── 5000
+   *              [  x  ][    y    ]
+   *   storage:   [y, x]
+   */
+  const shuffled: Project = {
+    version: 1,
+    durationMs: 5000,
+    tracks: [
+      {
+        id: 't1',
+        clips: [
+          { id: 'y', sourceId: 's1', sourceIn: 2000, sourceOut: 5000, start: 2000 },
+          { id: 'x', sourceId: 's1', sourceIn: 0, sourceOut: 2000, start: 0 },
+        ],
+      },
+    ],
+  }
+
+  it('offers the clip that is next on the timeline, not next in the array', () => {
+    expect(joinAvailability(shuffled, 'x', ids())).toEqual({
+      available: true,
+      command: { type: 'join', trackId: 't1', leftId: 'x', rightId: 'y', mergedId: 'new-1' },
+    })
+  })
+
+  it('still refuses on the clip that is genuinely last on the timeline', () => {
+    expect(joinAvailability(shuffled, 'y')).toHaveProperty(
+      'reason',
+      expect.stringMatching(/nothing after/i),
+    )
+  })
+})

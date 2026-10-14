@@ -254,12 +254,16 @@ export function apply(project: Project, op: Op): ApplyResult {
       const leftIndex = findClipIndex(track, op.leftId)
       const rightIndex = findClipIndex(track, op.rightId)
 
-      if (rightIndex !== leftIndex + 1) {
-        throw new Error(`join needs ${op.leftId} and ${op.rightId} to sit next to each other`)
+      if (leftIndex === rightIndex) {
+        throw new Error(`join needs two different clips, both are ${op.leftId}`)
       }
 
       const left = clipAt(track, leftIndex)
       const right = clipAt(track, rightIndex)
+
+      // Adjacency is judged on the timeline, not in the array. Clips are stored in insertion order
+      // (see types.ts), so requiring array neighbours refused perfectly valid joins the moment
+      // anything had been moved.
 
       if (left.sourceId !== right.sourceId) {
         throw new Error(`cannot join clips from different media`)
@@ -284,13 +288,19 @@ export function apply(project: Project, op: Op): ApplyResult {
         start: left.start,
       }
 
+      // Remove the higher index first so the lower one stays valid, then put the result where the
+      // earlier of the two sat.
       const clips = [...track.clips]
-      clips.splice(leftIndex, 2, merged)
+      const insertAt = Math.min(leftIndex, rightIndex)
+      clips.splice(Math.max(leftIndex, rightIndex), 1)
+      clips.splice(insertAt, 1)
+      clips.splice(insertAt, 0, merged)
 
       return {
         project: replaceTrack(project, { ...track, clips }),
-        // A split at the seam restores both halves with their original ids: join and split are
-        // exact inverses of one another.
+        // A split at the seam restores both halves with their original ids. Undo therefore restores
+        // the timeline exactly; the two clips end up adjacent in storage even if they were not
+        // before, which nothing user-facing depends on — every consumer sorts by start.
         inverse: {
           type: 'split',
           trackId: op.trackId,
