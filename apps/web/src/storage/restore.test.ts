@@ -122,3 +122,36 @@ describe('parseStoredProjectOr', () => {
     expect(() => parseStoredProjectOr({ ...valid, version: 99 }, empty)).toThrow(RestoreError)
   })
 })
+
+describe('healing a project saved before overlap was prevented', () => {
+  const overlapping = {
+    version: 1,
+    durationMs: 5000,
+    tracks: [
+      {
+        id: 't1',
+        clips: [
+          { id: 'a', sourceId: 's1', sourceIn: 0, sourceOut: 2000, start: 0 },
+          { id: 'b', sourceId: 's1', sourceIn: 0, sourceOut: 1000, start: 1000 },
+        ],
+      },
+    ],
+  }
+
+  it('pushes the clips apart rather than loading a project that cannot export', () => {
+    const healed = parseStoredProject(stored(overlapping))
+
+    expect(healed.tracks[0]?.clips.map((c) => c.start).sort((x, y) => x - y)).toEqual([0, 2000])
+  })
+
+  it('keeps all the footage', () => {
+    const healed = parseStoredProject(stored(overlapping))
+    const durations = healed.tracks[0]?.clips.map((c) => c.sourceOut - c.sourceIn)
+
+    expect(durations?.sort((x, y) => x - y)).toEqual([1000, 2000])
+  })
+
+  it('leaves a healthy project exactly as it was', () => {
+    expect(parseStoredProject(stored(valid))).toEqual(valid)
+  })
+})

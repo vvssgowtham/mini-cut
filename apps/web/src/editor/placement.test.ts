@@ -1,7 +1,7 @@
 /** The spec for where a clip may sit. */
 
 import { describe, expect, it } from 'vitest'
-import { clampStart, findOverlaps, placementBounds } from './placement'
+import { clampStart, findOverlaps, maxEndFor, placementBounds, resolveOverlaps } from './placement'
 import type { Clip } from './types'
 
 const clip = (id: string, start: number, durationMs: number): Clip => ({
@@ -95,5 +95,59 @@ describe('findOverlaps', () => {
     const overlapping = [clip('b', 1500, 1000), clip('a', 0, 2000)]
 
     expect(findOverlaps(overlapping)[0]?.left.id).toBe('a')
+  })
+})
+
+describe('resolveOverlaps', () => {
+  it('leaves a well-formed timeline untouched', () => {
+    const tidy = [clip('a', 0, 2000), clip('b', 2000, 1000)]
+
+    expect(resolveOverlaps(tidy)).toEqual(tidy)
+  })
+
+  it('pushes an overlapping clip right until it sits flush', () => {
+    const overlapping = [clip('a', 0, 2000), clip('b', 1000, 1000)]
+
+    expect(resolveOverlaps(overlapping).map((c) => [c.id, c.start])).toEqual([
+      ['a', 0],
+      ['b', 2000],
+    ])
+  })
+
+  it('keeps every frame of footage rather than truncating', () => {
+    const overlapping = [clip('a', 0, 2000), clip('b', 1000, 1000)]
+    const resolved = resolveOverlaps(overlapping)
+
+    for (const before of overlapping) {
+      const after = resolved.find((c) => c.id === before.id)
+      expect(after).toBeDefined()
+      expect(after!.sourceOut - after!.sourceIn).toBe(before.sourceOut - before.sourceIn)
+    }
+  })
+
+  it('cascades through a chain of overlaps', () => {
+    const piled = [clip('a', 0, 2000), clip('b', 500, 2000), clip('c', 600, 1000)]
+
+    expect(resolveOverlaps(piled).map((c) => c.start)).toEqual([0, 2000, 4000])
+  })
+
+  it('returns clips in timeline order', () => {
+    const shuffled = [clip('b', 3000, 1000), clip('a', 0, 2000)]
+
+    expect(resolveOverlaps(shuffled).map((c) => c.id)).toEqual(['a', 'b'])
+  })
+
+  it('handles an empty timeline', () => {
+    expect(resolveOverlaps([])).toEqual([])
+  })
+})
+
+describe('maxEndFor', () => {
+  it('stops at the next clip', () => {
+    expect(maxEndFor(clips, 'a')).toBe(5000)
+  })
+
+  it('is unbounded for the last clip', () => {
+    expect(maxEndFor(clips, 'c')).toBe(Number.POSITIVE_INFINITY)
   })
 })

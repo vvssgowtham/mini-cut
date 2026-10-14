@@ -23,8 +23,12 @@ const project: Project = {
   ],
 }
 
+/**
+ * Moves the last clip, which has nothing after it. Clips may not overlap, so nudging the first one
+ * would run it into the second and be rejected — these tests are about saving, not placement.
+ */
 const move = (start: number) =>
-  ({ type: 'move', trackId: 't1', clipId: 'a', start }) satisfies Parameters<
+  ({ type: 'move', trackId: 't1', clipId: 'b', start: 3000 + start }) satisfies Parameters<
     CommandBus['execute']
   >[0]
 
@@ -88,7 +92,7 @@ describe('debouncing', () => {
 
     expect(save).toHaveBeenCalledTimes(1)
     // And it saves the final state, not the first.
-    expect(saved[0]?.tracks[0]?.clips[0]?.start).toBe(400)
+    expect(saved[0]?.tracks[0]?.clips[1]?.start).toBe(3400)
   })
 
   it('does not save when nothing changed', async () => {
