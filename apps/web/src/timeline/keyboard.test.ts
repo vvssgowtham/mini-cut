@@ -141,11 +141,29 @@ describe('nudge', () => {
     expect(result.commands).toEqual([{ type: 'move', trackId: 't1', clipId: 'a', start: 500 }])
   })
 
-  it('stops at the start of the timeline', () => {
-    // 'b' starts at 8000, so a 20 s nudge left clamps rather than going negative.
+  it('stops against the clip before it rather than overlapping', () => {
+    // 'a' occupies 0..5000, so nudging 'b' left lands it flush at 5000, not at 0. Overlapping
+    // would build a timeline that draws fine and then refuses to export.
     const result = applyKeyAction({ type: 'nudge', deltaMs: -20_000 }, project, 'b', 0)
 
-    expect(result.commands).toEqual([{ type: 'move', trackId: 't1', clipId: 'b', start: 0 }])
+    expect(result.commands).toEqual([{ type: 'move', trackId: 't1', clipId: 'b', start: 5000 }])
+  })
+
+  it('stops at the start of the timeline when nothing is in the way', () => {
+    const lone: Project = {
+      version: 1,
+      durationMs: 4000,
+      tracks: [
+        {
+          id: 't1',
+          clips: [{ id: 'only', sourceId: 's1', sourceIn: 0, sourceOut: 2000, start: 2000 }],
+        },
+      ],
+    }
+
+    expect(applyKeyAction({ type: 'nudge', deltaMs: -99_999 }, lone, 'only', 0).commands).toEqual([
+      { type: 'move', trackId: 't1', clipId: 'only', start: 0 },
+    ])
   })
 
   it('emits nothing when the clip is already at the start', () => {

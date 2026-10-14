@@ -14,6 +14,7 @@
  */
 
 import { joinAvailability } from '../editor/clipActions'
+import { clampStart } from './../editor/placement'
 import type { Command } from '../editor/commands'
 import { clipEnd, type Clip, type Ms, type Project } from '../editor/types'
 import { DISPLAY_FPS } from '../media/timecode'
@@ -158,7 +159,9 @@ export function applyKeyAction(
 
   switch (action.type) {
     case 'nudge': {
-      const start = Math.max(0, clip.start + action.deltaMs)
+      // Same clamp as a drag: nudging into a neighbour would build a project that cannot export.
+      const siblings = project.tracks.find((track) => track.id === trackId)?.clips ?? []
+      const start = clampStart(siblings, clip.id, clip.start + action.deltaMs)
       if (start === clip.start) return NOTHING
       return { commands: [{ type: 'move', trackId, clipId: clip.id, start }] }
     }

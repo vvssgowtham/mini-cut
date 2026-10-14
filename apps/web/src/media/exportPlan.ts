@@ -80,8 +80,11 @@ export function planExport(project: Project, options: PlanOptions = {}): ExportP
     const previous = ordered[i - 1]
     const current = ordered[i]
     if (previous && current && current.start < clipEnd(previous)) {
+      const overlapMs = clipEnd(previous) - current.start
       throw new ExportPlanError(
-        `clips "${previous.id}" and "${current.id}" overlap; export cannot tell which should win`,
+        `Two clips overlap by ${Math.round(overlapMs)}ms on the timeline, and export cannot tell ` +
+          `which should be shown. Drag the later clip clear of the earlier one, or delete one of ` +
+          `them, then export again.`,
       )
     }
   }
