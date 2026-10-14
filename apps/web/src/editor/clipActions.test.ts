@@ -1,7 +1,8 @@
 /** The spec for whether a clip edit is possible. */
 
 import { describe, expect, it } from 'vitest'
-import { joinAvailability, splitAvailability } from './clipActions'
+import { closeGapAvailability, joinAvailability, splitAvailability } from './clipActions'
+import { CommandBus } from './history'
 import type { Project } from './types'
 
 const ids = () => {
@@ -188,5 +189,145 @@ describe('join across storage order', () => {
       'reason',
       expect.stringMatching(/nothing after/i),
     )
+  })
+})
+
+describe('closeGapAvailability', () => {
+  /**
+   *   0 ──── 2000   gap   5000 ──── 8000   gap   9000 ── 10000
+   *   [  a  ]             [    b    ]            [  c  ]
+   */
+  const gapped: Project = {
+    version: 1,
+    durationMs: 10_000,
+    tracks: [
+      {
+        id: 't1',
+        clips: [
+          { id: 'b', sourceId: 's1', sourceIn: 0, sourceOut: 3000, start: 5000 },
+          { id: 'c', sourceId: 's2', sourceIn: 0, sourceOut: 1000, start: 9000 },
+          { id: 'a', sourceId: 's1', sourceIn: 0, sourceOut: 2000, start: 0 },
+        ],
+      },
+    ],
+  }
+
+  it('pulls the clip back against the one before it', () => {
+    const result = closeGapAvailability(gapped, 'b')
+
+    expect(result).toMatchObject({ available: true, closedMs: 3000 })
+    if (!result.available) throw new Error('expected a closure')
+    expect(result.commands[0]).toEqual({
+      type: 'move',
+      trackId: 't1',
+      clipId: 'b',
+      start: 2000,
+    })
+  })
+
+  it('brings everything after it along, preserving their spacing', () => {
+    const result = closeGapAvailability(gapped, 'b')
+    if (!result.available) throw new Error('expected a closure')
+
+    // 'c' sat 1000ms after 'b' ended and still does.
+    expect(result.commands.map((c) => c.type === 'move' && c.start)).toEqual([2000, 6000])
+  })
+
+  it('moves clips earliest first, so none lands on one that has not moved yet', () => {
+    const result = closeGapAvailability(gapped, 'b')
+    if (!result.available) throw new Error('expected a closure')
+
+    const starts = result.commands.map((c) => (c.type === 'move' ? c.start : 0))
+    expect([...starts].sort((x, y) => x - y)).toEqual(starts)
+  })
+
+  it('closes a gap at the very start of the timeline', () => {
+    const late: Project = {
+      version: 1,
+      durationMs: 5000,
+      tracks: [
+        {
+          id: 't1',
+          clips: [{ id: 'only', sourceId: 's1', sourceIn: 0, sourceOut: 2000, start: 3000 }],
+        },
+      ],
+    }
+
+    expect(closeGapAvailability(late, 'only')).toMatchObject({ available: true, closedMs: 3000 })
+  })
+
+  it('works across different media, which is what Join could never do', () => {
+    expect(closeGapAvailability(gapped, 'c')).toMatchObject({ available: true })
+  })
+
+  it('refuses when the clip already touches the one before it', () => {
+    expect(closeGapAvailability(gapped, 'a')).toHaveProperty(
+      'reason',
+      expect.stringMatching(/no gap before/i),
+    )
+  })
+
+  it('needs a selection', () => {
+    expect(closeGapAvailability(gapped, null)).toMatchObject({ available: false })
+  })
+})
+
+describe('closing a gap through the bus', () => {
+  const gapped: Project = {
+    version: 1,
+    durationMs: 10_000,
+    tracks: [
+      {
+        id: 't1',
+        clips: [
+          { id: 'a', sourceId: 's1', sourceIn: 0, sourceOut: 2000, start: 0 },
+          { id: 'b', sourceId: 's1', sourceIn: 0, sourceOut: 3000, start: 5000 },
+          { id: 'c', sourceId: 's2', sourceIn: 0, sourceOut: 1000, start: 9000 },
+        ],
+      },
+    ],
+  }
+
+  function startsAfter(bus: CommandBus) {
+    return [...(bus.project.tracks[0]?.clips ?? [])]
+      .sort((x, y) => x.start - y.start)
+      .map((clip) => clip.start)
+  }
+
+  it('applies without tripping the no-overlap rule', () => {
+    // Every move is checked against the clips already moved, so the order has to be right.
+    const bus = new CommandBus(gapped)
+    const result = closeGapAvailability(gapped, 'b')
+    if (!result.available) throw new Error('expected a closure')
+
+    expect(() => bus.executeGroup(result.commands)).not.toThrow()
+    expect(startsAfter(bus)).toEqual([0, 2000, 6000])
+  })
+
+  it('undoes as a single step', () => {
+    const bus = new CommandBus(gapped)
+    const result = closeGapAvailability(gapped, 'b')
+    if (!result.available) throw new Error('expected a closure')
+
+    bus.executeGroup(result.commands)
+    bus.undo()
+
+    expect(bus.project).toEqual(gapped)
+    expect(bus.canUndo).toBe(false)
+  })
+
+  it('joins two separate imports end to end, which Rejoin cannot do', () => {
+    // 'c' comes from different media, so Rejoin refuses it outright.
+    expect(joinAvailability(gapped, 'b')).toMatchObject({ available: false })
+
+    const bus = new CommandBus(gapped)
+    const result = closeGapAvailability(bus.project, 'c')
+    if (!result.available) throw new Error('expected a closure')
+    bus.executeGroup(result.commands)
+
+    const clips = bus.project.tracks[0]!.clips
+    const b = clips.find((clip) => clip.id === 'b')!
+    const c = clips.find((clip) => clip.id === 'c')!
+    expect(c.start).toBe(b.start + (b.sourceOut - b.sourceIn))
   })
 })

@@ -422,7 +422,7 @@ export default function App() {
           Drag a clip to move it, or its edges to trim. Drag the playhead or the ruler to scrub.
           Scroll to pan, hold ctrl or cmd and scroll to zoom. Left and right arrows step exactly one
           frame, which is how to land a split precisely; S splits the selected clip at the playhead,
-          J joins it to the next, and space plays.
+          J rejoins two halves of a split, and space plays.
         </p>
       </footer>
     </div>

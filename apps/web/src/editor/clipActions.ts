@@ -108,3 +108,52 @@ export function joinAvailability(
     },
   }
 }
+
+/**
+ * Several commands at once, with a note of what they would do.
+ *
+ * Closing a gap moves every clip after it, so unlike split or join it cannot be one command — and
+ * the caller needs to know how much is about to move before offering it.
+ */
+export type RippleAvailability =
+  { available: true; commands: Command[]; closedMs: Ms } | { available: false; reason: string }
+
+/**
+ * Pull the selected clip back against the one before it, bringing everything after it along.
+ *
+ * This is the piece that was missing. Join only ever reunited two halves of a split, so two
+ * separate imports that did not quite meet could be nudged together by eye and no other way.
+ * Later clips move by the same amount, so the spacing between them is preserved — the gap closes,
+ * the rest of the cut does not rearrange itself.
+ */
+export function closeGapAvailability(
+  project: Project,
+  selectedClipId: string | null,
+): RippleAvailability {
+  const found = locate(project, selectedClipId)
+  if (!found) return { available: false, reason: 'Select a clip to close the gap before it.' }
+
+  const { clip: selected, trackId, clips } = found
+
+  // By timeline position rather than array order, since clips are stored in insertion order.
+  const previousEnd = clips
+    .filter((candidate) => candidate.id !== selected.id && clipEnd(candidate) <= selected.start)
+    .reduce((furthest, candidate) => Math.max(furthest, clipEnd(candidate)), 0)
+
+  const closedMs = selected.start - previousEnd
+  if (closedMs <= 0) return { available: false, reason: 'There is no gap before this clip.' }
+
+  // Earliest first: each move is checked against the clips already moved, and shifting left in
+  // timeline order means a clip never lands on one that has not moved yet.
+  const commands = clips
+    .filter((candidate) => candidate.start >= selected.start)
+    .sort((a, b) => a.start - b.start)
+    .map((clip): Command => ({
+      type: 'move',
+      trackId,
+      clipId: clip.id,
+      start: clip.start - closedMs,
+    }))
+
+  return { available: true, commands, closedMs }
+}
