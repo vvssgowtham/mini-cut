@@ -23,6 +23,8 @@
 
   /* Surfaces and ink */
   --canvas: #ffffff;
+  /* A touch warmer than surface-soft, so the white card reads as lifted off it. */
+  --page: #faf8f8;
   --surface-soft: #f7f7f7;
   --surface-strong: #f2f2f2;
   --ink: #222222;
@@ -78,14 +80,27 @@
   box-sizing: border-box;
 }
 
+/**
+ * The page behind the editor.
+ *
+ * Not a decorative gradient — the design language is explicit that 95% of its surfaces are flat and
+ * that depth comes from surface separation, so this is the same move it makes everywhere: a white
+ * card on a softer page. The tint is Rausch at around 2%, enough to stop the backdrop reading as
+ * grey without putting a colour cast anywhere near the footage.
+ */
 body {
   margin: 0;
-  background: var(--canvas);
+  background:
+    radial-gradient(120% 70% at 50% 0%, rgba(255, 56, 92, 0.05) 0%, rgba(255, 56, 92, 0) 60%),
+    var(--page);
   color: var(--body);
   font-family: var(--sans);
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* The wash is painted once against the viewport rather than tiling down a long page. */
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 
 :focus-visible {
@@ -95,12 +110,16 @@ body {
 
 /* Layout ------------------------------------------------------------------ */
 
+/* The editor is a card on the page, which is how this language separates surfaces everywhere. */
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
   max-width: 1120px;
-  margin: 0 auto;
+  margin: var(--space-xl) auto;
+  background: var(--canvas);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
 .zone {
@@ -505,7 +524,22 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* Below the card's own width there is nothing to float on, so it fills the screen instead. */
+@media (max-width: 1180px) {
+  .app {
+    margin: var(--space-base);
+    border-radius: var(--radius-md);
+  }
+}
+
 @media (max-width: 620px) {
+  .app {
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    min-height: 100vh;
+  }
+
   .masthead {
     grid-template-columns: 1fr;
     justify-items: start;

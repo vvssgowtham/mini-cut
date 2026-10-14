@@ -106,9 +106,13 @@ canvas, the 2–48px spacing scale, the 4/8/14/20px radius ladder, and the syste
 it either has that shadow or none, because depth is meant to come from surface separation rather
 than layered elevation.
 
-The system is applied throughout, including the viewer surround and the timeline. One trade worth
-naming: a light surround makes footage read darker than it is, which is why editing tools are
-usually dark — so judge exposure in a player rather than here.
+The system is applied throughout, including the viewer surround and the timeline. The editor itself
+is a white card on a faintly Rausch-tinted page, which is the separation this language uses
+everywhere in place of layered elevation — rather than a decorative gradient, which the system
+explicitly avoids.
+
+One trade worth naming: a light surround makes footage read darker than it is, which is why editing
+tools are usually dark, so judge exposure in a player rather than here.
 
 ## Architecture
 
