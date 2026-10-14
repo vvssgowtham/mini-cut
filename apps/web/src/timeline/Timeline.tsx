@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CommandBus } from '../editor/history'
 import { useProject } from '../editor/useProject'
 import type { PlayheadStore } from '../media/playhead'
+import type { Waveform } from '../media/waveform'
 import { clipEnd, type Clip, type Ms } from '../editor/types'
 import { drawTimeline, TIMELINE_HEIGHT_PX } from './draw'
 import { hitTest, type Hit } from './hitTest'
@@ -51,6 +52,8 @@ export type TimelineProps = {
   playhead: PlayheadStore
   selectedClipId: string | null
   onSelect: (clipId: string | null) => void
+  /** Peaks per source id, drawn inside each clip as they arrive. */
+  waveforms?: ReadonlyMap<string, Waveform>
   heightPx?: number
 }
 
@@ -59,6 +62,7 @@ export function Timeline({
   playhead,
   selectedClipId,
   onSelect,
+  waveforms,
   heightPx = DEFAULT_HEIGHT_PX,
 }: TimelineProps) {
   const project = useProject(bus)
@@ -67,6 +71,7 @@ export function Timeline({
   const dragRef = useRef<DragState | null>(null)
   const hoveredRef = useRef<string | null>(null)
   const selectedRef = useRef(selectedClipId)
+  const waveformsRef = useRef(waveforms)
   const frameRef = useRef<number | null>(null)
   const projectRef = useRef(project)
   // Announced to screen readers: a canvas has no accessible structure of its own, so without this
@@ -98,6 +103,7 @@ export function Timeline({
         devicePixelRatio: window.devicePixelRatio || 1,
         selectedClipId: selectedRef.current,
         hoveredClipId: hoveredRef.current,
+        waveforms: waveformsRef.current,
       })
     })
   }, [heightPx, playhead])
@@ -117,6 +123,11 @@ export function Timeline({
     selectedRef.current = selectedClipId
     scheduleDraw()
   }, [selectedClipId, scheduleDraw])
+
+  useEffect(() => {
+    waveformsRef.current = waveforms
+    scheduleDraw()
+  }, [waveforms, scheduleDraw])
 
   // Size the backing store to the element, and keep it in step with layout.
   useEffect(() => {

@@ -8,6 +8,8 @@
 
 import { useState } from 'react'
 import type { AgentPlan, AgentRequest, AgentResponse } from '@mini-cut/shared'
+import { findSilences, silencesWithinClip } from '../media/silence'
+import type { Waveform } from '../media/waveform'
 import type { CommandBus } from '../editor/history'
 import type { Project } from '../editor/types'
 import { PlanRejectedError, applyPlan, planToCommands } from './applyPlan'
@@ -15,6 +17,8 @@ import { PlanRejectedError, applyPlan, planToCommands } from './applyPlan'
 export type AgentPanelProps = {
   bus: CommandBus
   project: Project
+  /** Peaks per source, so quiet stretches can be measured rather than guessed at. */
+  waveforms?: ReadonlyMap<string, Waveform>
   disabled?: boolean
 }
 
@@ -36,7 +40,29 @@ function timelineFor(project: Project): AgentRequest['clips'] {
   )
 }
 
-export function AgentPanel({ bus, project, disabled }: AgentPanelProps) {
+/**
+ * Quiet stretches across the whole timeline, in timeline time.
+ *
+ * Measured per clip rather than per source, because a clip shows only a window of its source and a
+ * silence outside that window is not on the timeline at all.
+ */
+function silencesFor(
+  project: Project,
+  waveforms: ReadonlyMap<string, Waveform> | undefined,
+): AgentRequest['silences'] {
+  if (!waveforms?.size) return undefined
+
+  const ranges = project.tracks.flatMap((track) =>
+    track.clips.flatMap((clip) => {
+      const waveform = waveforms.get(clip.sourceId)
+      return waveform ? silencesWithinClip(findSilences(waveform), clip) : []
+    }),
+  )
+
+  return ranges.length > 0 ? ranges.sort((a, b) => a.startMs - b.startMs) : undefined
+}
+
+export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProps) {
   const [instruction, setInstruction] = useState('')
   const [state, setState] = useState<State>({ status: 'idle' })
 
@@ -46,7 +72,11 @@ export function AgentPanel({ bus, project, disabled }: AgentPanelProps) {
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ instruction, clips: timelineFor(project) }),
+        body: JSON.stringify({
+          instruction,
+          clips: timelineFor(project),
+          silences: silencesFor(project, waveforms),
+        }),
       })
       const body = (await response.json()) as AgentResponse
 

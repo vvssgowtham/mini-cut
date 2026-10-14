@@ -14,6 +14,7 @@
 
 import { clipEnd, type Clip, type Ms } from '../editor/types'
 import { formatTimecode } from '../media/timecode'
+import { peaksForWindow, type Waveform } from '../media/waveform'
 import { chooseTickIntervalMs, isMajorTick, tickPositions } from './ticks'
 import { timeToX, visibleClips, visibleRange, type Viewport } from './viewport'
 
@@ -27,6 +28,7 @@ export type TimelineTheme = {
   clipStroke: string
   clipText: string
   clipSelectedStroke: string
+  waveform: string
   handle: string
   playhead: string
 }
@@ -44,6 +46,7 @@ export const defaultTheme: TimelineTheme = {
   clipStroke: '#434f58',
   clipText: '#dde3e8',
   clipSelectedStroke: '#f0a848',
+  waveform: '#6f8a9c',
   handle: '#5c6872',
   playhead: '#f0a848',
 }
@@ -61,6 +64,9 @@ const LABEL_MIN_WIDTH_PX = 54
 const TICK_MIN_SPACING_PX = 72
 const LABEL_EVERY = 2
 const PLAYHEAD_HEAD_PX = 7
+/** The waveform sits in the lower half of a clip, below the name and duration. */
+const WAVEFORM_HEIGHT_PX = 24
+const WAVEFORM_INSET_PX = 6
 
 export type TimelineScene = {
   viewport: Viewport
@@ -74,6 +80,8 @@ export type TimelineScene = {
   devicePixelRatio: number
   selectedClipId?: string | null
   hoveredClipId?: string | null
+  /** Peaks per source id. A source still being analysed simply has no entry yet. */
+  waveforms?: ReadonlyMap<string, Waveform>
   theme?: TimelineTheme
 }
 
@@ -129,9 +137,14 @@ function drawClip(
   ctx.roundRect(x, CLIP_TOP_PX, width, CLIP_HEIGHT_PX, CLIP_RADIUS_PX)
   ctx.fillStyle = gradient
   ctx.fill()
+  // Stroked before clipping, or half of a selected clip's thicker border would be cut away.
   ctx.lineWidth = selected ? 2 : 1
   ctx.strokeStyle = selected ? theme.clipSelectedStroke : theme.clipStroke
   ctx.stroke()
+
+  // Everything drawn inside the clip from here on is held within its rounded box.
+  ctx.save()
+  ctx.clip()
 
   // Trim handles appear on hover rather than always: two bars on every clip would read as busier
   // than the footage.
@@ -142,13 +155,28 @@ function drawClip(
     }
   }
 
-  if (width < LABEL_MIN_WIDTH_PX) return
+  const waveform = scene.waveforms?.get(clip.sourceId)
+  if (waveform) {
+    // One column per pixel, taking the loudest peak each column spans, so a loud passage cannot
+    // look silent just because a single sample landed in a pause.
+    const columns = Math.max(1, Math.floor(Math.min(width, viewport.widthPx - Math.max(x, 0))))
+    const peaks = peaksForWindow(waveform, clip.sourceIn, clip.sourceOut, columns)
+    const midY = CLIP_TOP_PX + CLIP_HEIGHT_PX - WAVEFORM_INSET_PX - WAVEFORM_HEIGHT_PX / 2
+    const originX = Math.max(x, 0)
 
-  // Clip to the clip's own box so a long name cannot spill onto its neighbour.
-  ctx.save()
-  ctx.beginPath()
-  ctx.rect(x, CLIP_TOP_PX, width - CLIP_PADDING_PX, CLIP_HEIGHT_PX)
-  ctx.clip()
+    ctx.fillStyle = theme.waveform
+    for (let column = 0; column < peaks.length; column++) {
+      const amplitude = (peaks[column] ?? 0) * (WAVEFORM_HEIGHT_PX / 2)
+      // Always at least a hairline, so silence reads as a flat line rather than as missing data.
+      const half = Math.max(0.5, amplitude)
+      ctx.fillRect(originX + column, midY - half, 1, half * 2)
+    }
+  }
+
+  if (width < LABEL_MIN_WIDTH_PX) {
+    ctx.restore()
+    return
+  }
 
   // Pinned to the visible part of the clip, not to its left edge. A long clip scrolled off the
   // left would otherwise have its label drawn at a negative x — present, but off screen, so the

@@ -26,6 +26,8 @@ import {
 } from './storage/db'
 import { openOpfsAsUrl, revokeOpfsUrl } from './storage/opfs'
 import { timelineEnd } from './media/timelineMap'
+import type { Waveform } from './media/waveform'
+import { requestWaveform } from './media/waveformClient'
 import { RestoreError } from './storage/restore'
 import { Timeline } from './timeline/Timeline'
 import { ClipActions } from './ui/ClipActions'
@@ -63,6 +65,9 @@ export default function App() {
   // One object URL per imported file. A single url would mean a second import replaced the first,
   // which is exactly what used to happen.
   const [sources, setSources] = useState<ReadonlyMap<string, string>>(new Map())
+  // Peaks per source, filled in as the worker finishes. A source still being analysed simply has
+  // no waveform yet, which the timeline draws as a clip without one.
+  const [waveforms, setWaveforms] = useState<ReadonlyMap<string, Waveform>>(new Map())
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [notice, setNotice] = useState<string | null>(null)
   const [online, setOnline] = useState(() => navigator.onLine)
@@ -72,6 +77,13 @@ export default function App() {
   )
   /** Revoked on unmount; each createObjectURL pins its file for the life of the document. */
   const sourcesRef = useRef<ReadonlyMap<string, string>>(sources)
+
+  /** Analysis is slow and entirely optional, so it never blocks the import it belongs to. */
+  const analyseAudio = useCallback((sourceId: string) => {
+    void requestWaveform(sourceId).then((waveform) => {
+      if (waveform) setWaveforms((current) => new Map(current).set(sourceId, waveform))
+    })
+  }, [])
 
   const addSource = useCallback(async (sourceId: string) => {
     const url = await openOpfsAsUrl(sourceId)
@@ -115,7 +127,10 @@ export default function App() {
         const sourceIds = new Set(
           restored.tracks.flatMap((track) => track.clips.map((clip) => clip.sourceId)),
         )
-        for (const sourceId of sourceIds) await addSource(sourceId)
+        for (const sourceId of sourceIds) {
+          await addSource(sourceId)
+          analyseAudio(sourceId)
+        }
       } catch (error) {
         // A save from a newer build is kept, not overwritten: the user can reopen it in the tab
         // that wrote it. Anything else is reported and left alone.
@@ -134,7 +149,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [addSource, bus])
+  }, [addSource, analyseAudio, bus])
 
   // Autosave. Flushed on hide rather than on unload: a backgrounded tab can be discarded without
   // ever firing unload, and pagehide/visibilitychange are the events that actually run.
@@ -219,6 +234,7 @@ export default function App() {
     async (opfsName: string) => {
       setNotice(null)
       await addSource(opfsName)
+      analyseAudio(opfsName)
 
       const url = await openOpfsAsUrl(opfsName)
       let durationMs: number
@@ -248,7 +264,7 @@ export default function App() {
       setSelectedClipId(clip.id)
       void requestPersistentStorage()
     },
-    [addSource, bus, playhead],
+    [addSource, analyseAudio, bus, playhead],
   )
 
   const clips = project.tracks[0]?.clips ?? []
@@ -281,6 +297,7 @@ export default function App() {
           playhead={playhead}
           selectedClipId={selectedClipId}
           onSelect={setSelectedClipId}
+          waveforms={waveforms}
         />
       </section>
 
