@@ -33,22 +33,28 @@ export type TimelineTheme = {
   playhead: string
 }
 
-/** Mirrors the tokens in `index.css`; a canvas cannot read CSS variables. */
+/**
+ * Mirrors the tokens in `index.css`; a canvas cannot read CSS variables.
+ *
+ * Light, to match the rest of the system. Clips are white cards on a soft grey track — the same
+ * white-on-white separation the design language uses everywhere instead of layered elevation — and
+ * Rausch marks the two things that are about position: the playhead and the selected clip.
+ */
 export const defaultTheme: TimelineTheme = {
-  rulerBackground: '#12161a',
-  rulerLine: '#39434b',
-  rulerText: '#7c8792',
-  trackBackground: '#171b1e',
-  // Clips get a slight vertical gradient so they read as objects sitting on the track rather than
-  // holes cut out of it.
-  clipTop: '#2f3a42',
-  clipBottom: '#222a30',
-  clipStroke: '#434f58',
-  clipText: '#dde3e8',
-  clipSelectedStroke: '#f0a848',
-  waveform: '#6f8a9c',
-  handle: '#5c6872',
-  playhead: '#f0a848',
+  rulerBackground: '#f2f2f2',
+  rulerLine: '#c1c1c1',
+  rulerText: '#6a6a6a',
+  trackBackground: '#f7f7f7',
+  // A barely-there gradient: enough to read as a card lifted off the track, not enough to become a
+  // decoration in a system that is otherwise flat.
+  clipTop: '#ffffff',
+  clipBottom: '#fbfbfb',
+  clipStroke: '#dddddd',
+  clipText: '#222222',
+  clipSelectedStroke: '#ff385c',
+  waveform: '#929292',
+  handle: '#6a6a6a',
+  playhead: '#ff385c',
 }
 
 /** Vertical layout, in CSS pixels. */
@@ -57,7 +63,7 @@ export const CLIP_TOP_PX = RULER_HEIGHT_PX + 10
 export const CLIP_HEIGHT_PX = 62
 export const TIMELINE_HEIGHT_PX = CLIP_TOP_PX + CLIP_HEIGHT_PX + 10
 
-const CLIP_RADIUS_PX = 4
+const CLIP_RADIUS_PX = 14
 const CLIP_PADDING_PX = 8
 /** Below this a clip is a sliver, and a label would be unreadable mush. */
 const LABEL_MIN_WIDTH_PX = 54

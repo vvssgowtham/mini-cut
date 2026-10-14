@@ -98,6 +98,18 @@ mean a crossfade, a replacement, or a mistake.
 `-ss` goes _before_ `-i` when copying (fast keyframe seek) and _after_ when re-encoding
 (frame-accurate). Getting that backwards is the classic ffmpeg trim bug.
 
+## Design
+
+The interface follows the Airbnb design language in [DESIGN.md](DESIGN.md), installed with
+`npx getdesign add airbnb`: Rausch `#ff385c` as the single brand colour, `#222222` ink on a white
+canvas, the 2–48px spacing scale, the 4/8/14/20px radius ladder, and the system's one shadow tier —
+it either has that shadow or none, because depth is meant to come from surface separation rather
+than layered elevation.
+
+One deliberate departure: the viewer well stays black. A video is judged against what surrounds it,
+and a white surround makes every frame read darker than it is. The system has no opinion about video
+because it was never designed for it.
+
 ## Architecture
 
 ```
