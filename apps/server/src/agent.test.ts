@@ -214,3 +214,53 @@ describe('when the model cannot carry out the instruction', () => {
     expect(response.json().error).toMatch(/no audio on this timeline/)
   })
 })
+
+describe('provider selection', () => {
+  const keys = ['ANTHROPIC_API_KEY', 'GOOGLE_API_KEY'] as const
+
+  function withEnv(set: Partial<Record<(typeof keys)[number], string>>, run: () => void) {
+    const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+    for (const key of keys) delete process.env[key]
+    Object.assign(process.env, set)
+    try {
+      run()
+    } finally {
+      for (const key of keys) {
+        if (previous[key] === undefined) delete process.env[key]
+        else process.env[key] = previous[key]
+      }
+    }
+  }
+
+  it('runs with a Google key and no Anthropic key', async () => {
+    await new Promise<void>((resolve) => {
+      withEnv({ GOOGLE_API_KEY: 'AIza-test' }, () => {
+        const app = buildApp()
+        void post(app, { instruction: 'cut it', clips }).then(async (response) => {
+          // Configured, so it gets as far as calling out rather than refusing at the door.
+          expect(response.statusCode).not.toBe(503)
+          await app.close()
+          resolve()
+        })
+      })
+    })
+  })
+
+  it('says which variables to set when neither is present', async () => {
+    const app = buildApp()
+    let response
+    withEnv({}, () => undefined)
+    const previous = { a: process.env.ANTHROPIC_API_KEY, g: process.env.GOOGLE_API_KEY }
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_API_KEY
+    const bare = buildApp()
+    response = await post(bare, { instruction: 'cut it', clips })
+    await bare.close()
+    await app.close()
+    if (previous.a) process.env.ANTHROPIC_API_KEY = previous.a
+    if (previous.g) process.env.GOOGLE_API_KEY = previous.g
+
+    expect(response.statusCode).toBe(503)
+    expect(response.json().error).toMatch(/ANTHROPIC_API_KEY or GOOGLE_API_KEY/)
+  })
+})

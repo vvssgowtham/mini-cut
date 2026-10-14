@@ -13,19 +13,53 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { AgentError, createAnthropicPlanner, planEdit } from './agent'
+import { AgentError, createAnthropicPlanner, createGeminiPlanner, planEdit } from './agent'
+import type { EditPlanner } from './agent'
 import type { AgentRequest } from '@mini-cut/shared'
 
 /** Read .env directly rather than depending on a flag being passed through two layers of npm. */
-function loadKey(): string | undefined {
-  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
+function readEnv(name: string): string | undefined {
+  if (process.env[name]) return process.env[name]
   try {
     const file = readFileSync(join(process.cwd(), '.env'), 'utf8')
-    const line = file.split('\n').find((candidate) => candidate.startsWith('ANTHROPIC_API_KEY='))
-    return line?.slice('ANTHROPIC_API_KEY='.length).trim() || undefined
+    const line = file.split('\n').find((candidate) => candidate.startsWith(`${name}=`))
+    return line?.slice(name.length + 1).trim() || undefined
   } catch {
     return undefined
   }
+}
+
+/**
+ * Whichever provider has a key.
+ *
+ * The key format is checked first: a wrong one otherwise costs a round trip and comes back as a
+ * 401, which reads like the agent is broken rather than like the credential is.
+ */
+function choosePlanner(): { provider: string; planner: EditPlanner } | { error: string } {
+  const anthropicKey = readEnv('ANTHROPIC_API_KEY')
+  if (anthropicKey) {
+    if (!anthropicKey.startsWith('sk-ant-')) {
+      return {
+        error: `ANTHROPIC_API_KEY does not look like an Anthropic key (they begin "sk-ant-"). Got "${anthropicKey.slice(0, 6)}…".`,
+      }
+    }
+    return { provider: 'Anthropic', planner: createAnthropicPlanner(anthropicKey) }
+  }
+
+  const googleKey = readEnv('GOOGLE_API_KEY')
+  if (googleKey) {
+    if (!googleKey.startsWith('AIza')) {
+      return {
+        error:
+          `GOOGLE_API_KEY does not look like a Gemini API key (they begin "AIza"). Got "${googleKey.slice(0, 6)}…".\n` +
+          'Create one at https://aistudio.google.com/apikey — a Google Cloud OAuth token or a key ' +
+          'for another Google product will not work here.',
+      }
+    }
+    return { provider: 'Gemini', planner: createGeminiPlanner(googleKey) }
+  }
+
+  return { error: 'No key found. Put ANTHROPIC_API_KEY or GOOGLE_API_KEY in apps/server/.env.' }
 }
 
 /** Two clips with a quiet stretch in the middle, enough to exercise trim, split, delete and move. */
@@ -42,25 +76,20 @@ const sample: AgentRequest = {
 }
 
 async function main() {
-  const apiKey = loadKey()
-  if (!apiKey) {
-    console.error('No ANTHROPIC_API_KEY. Put one in apps/server/.env, or export it.')
-    process.exit(1)
-  }
-  if (!apiKey.startsWith('sk-ant-')) {
-    console.error(
-      `That key does not look like an Anthropic key (they begin "sk-ant-"). Got "${apiKey.slice(0, 6)}…".`,
-    )
+  const chosen = choosePlanner()
+  if ('error' in chosen) {
+    console.error(chosen.error)
     process.exit(1)
   }
 
+  console.log(`Provider:    ${chosen.provider}`)
   console.log(`Timeline:    clip-one 0..30000, clip-two 30000..45000`)
   console.log(`Silences:    12000..15500, 33000..34200`)
   console.log(`Instruction: ${sample.instruction}\n`)
 
   const started = Date.now()
   try {
-    const plan = await planEdit(createAnthropicPlanner(apiKey), sample)
+    const plan = await planEdit(chosen.planner, sample)
     console.log(`${plan.summary}\n`)
     for (const operation of plan.operations) console.log(' ', JSON.stringify(operation))
     console.log(`\n${plan.operations.length} operation(s) in ${Date.now() - started}ms`)

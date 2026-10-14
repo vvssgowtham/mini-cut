@@ -18,9 +18,13 @@ is not configured.
 To check the agent without opening the editor:
 
 ```bash
-cp apps/server/.env.example apps/server/.env   # add your key
+cp apps/server/.env.example apps/server/.env   # add ANTHROPIC_API_KEY or GOOGLE_API_KEY
 npm run agent:try -w @mini-cut/server -- "remove the silent parts"
 ```
+
+Either Claude or Gemini works — the planner is injected, so a second provider is a second function
+rather than a second agent, and whatever either returns is validated identically. The safety of this
+feature is the schema and the timeline checks, not the vendor.
 
 It runs one instruction against a fixed sample timeline and prints the operations the model
 returned. The test suite stubs the model, so it proves bad output is rejected but says nothing about

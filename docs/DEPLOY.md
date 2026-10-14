@@ -36,8 +36,11 @@ docker build -f apps/server/Dockerfile -t mini-cut-api .
 docker run -p 8080:8080 -e ANTHROPIC_API_KEY=sk-ant-... mini-cut-api
 ```
 
-`ANTHROPIC_API_KEY` is the only required variable. Without it the app still runs: the agent endpoint
-returns 503 and says it is not configured, rather than pretending to work.
+One of `ANTHROPIC_API_KEY` or `GOOGLE_API_KEY` is required; Anthropic wins if both are set. Without
+either the app still runs: the agent endpoint returns 503 and says it is not configured, rather than
+pretending to work.
+
+`GEMINI_MODEL` overrides the Gemini model, which is worth knowing when a model is retired.
 
 ## Routing `/api`
 
