@@ -15,9 +15,10 @@ const clips = [
   { id: 'b', sourceIn: 0, sourceOut: 5000, start: 10_000 },
 ]
 
+/** Genuinely valid: clip 'a' shows source 0..10000, so this drops its first second. */
 const validPlan = {
-  summary: 'Removes the first 10 seconds.',
-  operations: [{ type: 'trim', clipId: 'a', sourceIn: 10_000, sourceOut: 10_000 }],
+  summary: 'Removes the first second.',
+  operations: [{ type: 'trim', clipId: 'a', sourceIn: 1000, sourceOut: 10_000 }],
 }
 
 function appWith(planner: EditPlanner) {
@@ -165,5 +166,38 @@ describe('without an API key', () => {
 
     await app.close()
     if (previous) process.env.ANTHROPIC_API_KEY = previous
+  })
+})
+
+describe('silences', () => {
+  it('passes measured silences to the model rather than making it guess', async () => {
+    const planner: EditPlanner = vi.fn(async () => validPlan)
+    const app = appWith(planner)
+
+    await post(app, {
+      instruction: 'remove the silent parts',
+      clips,
+      silences: [{ startMs: 2000, endMs: 4000 }],
+    })
+
+    expect(vi.mocked(planner).mock.calls[0]?.[0].silences).toEqual([{ startMs: 2000, endMs: 4000 }])
+  })
+
+  it('works without them, since a source may have no audio at all', async () => {
+    const app = appWith(async () => validPlan)
+
+    expect((await post(app, { instruction: 'trim it', clips })).statusCode).toBe(200)
+  })
+
+  it('rejects malformed silence ranges', async () => {
+    const app = appWith(async () => validPlan)
+
+    const response = await post(app, {
+      instruction: 'cut it',
+      clips,
+      silences: [{ startMs: -1, endMs: 'soon' }],
+    })
+
+    expect(response.statusCode).toBe(400)
   })
 })

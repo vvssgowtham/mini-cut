@@ -45,6 +45,11 @@ Rules:
 - If the instruction cannot be carried out with these operations, say so in the summary and return
   an empty operations array.
 
+You may also be given "silences": quiet stretches in timeline milliseconds, already measured from
+the audio. Use them rather than guessing where speech pauses. Removing a silence inside a clip
+means splitting around it and deleting the middle piece; work from the last silence backwards so
+earlier positions stay valid as the timeline changes.
+
 Reply with the submit_edit tool only.`
 
 const EDIT_TOOL: Anthropic.Tool = {
@@ -100,7 +105,15 @@ export function createAnthropicPlanner(apiKey: string): EditPlanner {
       messages: [
         {
           role: 'user',
-          content: `Timeline:\n${JSON.stringify(request.clips, null, 2)}\n\nInstruction: ${request.instruction}`,
+          content: [
+            `Timeline:\n${JSON.stringify(request.clips, null, 2)}`,
+            request.silences?.length
+              ? `Silences:\n${JSON.stringify(request.silences, null, 2)}`
+              : null,
+            `Instruction: ${request.instruction}`,
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
         },
       ],
     })

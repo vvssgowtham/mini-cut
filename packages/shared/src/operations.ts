@@ -85,6 +85,17 @@ export const agentRequestSchema = z.object({
     )
     .min(1)
     .max(500),
+  /**
+   * Quiet stretches found in the audio, in timeline milliseconds.
+   *
+   * Sent because the model cannot hear. Without them "remove the silent parts" is a guess; with
+   * them it is arithmetic the model can do against ranges the user can already see on the
+   * waveform.
+   */
+  silences: z
+    .array(z.object({ startMs: msSchema, endMs: msSchema }))
+    .max(500)
+    .optional(),
 })
 
 export type AgentRequest = z.infer<typeof agentRequestSchema>
