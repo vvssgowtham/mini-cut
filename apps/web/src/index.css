@@ -1,35 +1,77 @@
 /**
- * Mini Cut's visual system.
+ * Mini Cut's visual system, built to the Airbnb design language in DESIGN.md.
  *
- * Dark is functional here rather than fashionable: you judge an image's brightness against a neutral
- * dark surround, which is why cutting rooms and edit suites look like this. The greys carry a slight
- * cool cast so they read as neutral next to warm footage, and the one accent is a tungsten amber — a
- * lamp colour borrowed from the bench rather than from a brand palette.
+ * Every value here comes from that file rather than from taste: Rausch #ff385c as the single brand
+ * voltage, #222222 ink on a white canvas, the 2/4/8/12/16/24/32/48 spacing scale, the 4/8/14/20/32
+ * radius ladder, and the system's one shadow tier — it either has that shadow or none, because
+ * depth is meant to come from surface separation and rounded clipping rather than layered elevation.
  *
- * Structure is hairlines and zones, not cards: an instrument panel, where a rule means "different
- * job" rather than "decorative edge".
+ * One departure, deliberate: the viewer well stays black. A video is judged against what surrounds
+ * it, and a white surround makes every frame read darker than it is. The system has no opinion
+ * about video because it was never designed for it, so this follows the medium instead.
  */
 
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/500.css';
 @import '@fontsource/ibm-plex-mono/400.css';
 @import '@fontsource/ibm-plex-mono/500.css';
 
 :root {
-  --ink: #0e1113;
-  --panel: #171b1e;
-  --line: #262c31;
-  --dim: #7c8792;
-  --text: #dde3e8;
-  --tungsten: #f0a848;
-  --alarm: #e8604c;
+  /* Brand */
+  --rausch: #ff385c;
+  --rausch-active: #e00b41;
+  --rausch-disabled: #ffd1da;
+  --error: #c13515;
 
-  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  /* Surfaces and ink */
+  --canvas: #ffffff;
+  --surface-soft: #f7f7f7;
+  --surface-strong: #f2f2f2;
+  --ink: #222222;
+  --body: #3f3f3f;
+  --muted: #6a6a6a;
+  --muted-soft: #929292;
+  --hairline: #dddddd;
+  --hairline-soft: #ebebeb;
+  --border-strong: #c1c1c1;
+  --on-primary: #ffffff;
+
+  /*
+   * The editor well: the viewer surround and the timeline.
+   *
+   * Light, like everything else. A portrait video in a wide frame is mostly surround, so this is a
+   * large share of the screen and a dark slab there would dominate the page.
+   *
+   * The trade is real and worth naming: a light surround makes footage read darker than it is, so
+   * judge exposure in a player rather than here.
+   */
+  --viewer: var(--surface-soft);
+
+  /* Spacing */
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-base: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+
+  /* The single shadow tier in the system. */
+  --shadow:
+    rgba(0, 0, 0, 0.02) 0 0 0 1px, rgba(0, 0, 0, 0.04) 0 2px 6px 0, rgba(0, 0, 0, 0.1) 0 4px 8px 0;
+
+  --sans:
+    'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  /* Timecode only. A proportional face makes a running counter jump as its digits change width. */
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-  --gutter: 20px;
-
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -38,106 +80,132 @@
 
 body {
   margin: 0;
-  background: var(--ink);
-  color: var(--text);
+  background: var(--canvas);
+  color: var(--body);
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
 :focus-visible {
-  outline: 2px solid var(--tungsten);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
-/* Zones ------------------------------------------------------------------ */
+/* Layout ------------------------------------------------------------------ */
 
 .app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  max-width: 1180px;
+  max-width: 1120px;
   margin: 0 auto;
 }
 
 .zone {
-  border-bottom: 1px solid var(--line);
-  padding: 14px var(--gutter);
+  padding: var(--space-base) var(--space-lg);
 }
 
-.zone:last-child {
-  border-bottom: 0;
+/* Hairlines separate bands; the system uses them in place of boxes everywhere. */
+.zone + .zone {
+  border-top: 1px solid var(--hairline-soft);
 }
 
-/* Header: wordmark, the timecode instrument, save state ------------------- */
+/* Header ------------------------------------------------------------------ */
 
 .masthead {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-base);
+  padding-block: var(--space-md);
 }
 
 .wordmark {
   margin: 0;
-  font-family: var(--mono);
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  /* Presentational only: the DOM keeps "Mini Cut", so the accessible name is not spelled out. */
-  text-transform: uppercase;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.44px;
+  color: var(--rausch);
 }
 
-/* The hero: the instrument's reading. Tabular figures so it does not jitter as it runs. */
+/* The instrument reading. Tabular figures so it does not jitter as it runs. */
 .timecode {
   font-family: var(--mono);
-  font-size: clamp(28px, 6vw, 44px);
-  font-weight: 400;
+  font-size: clamp(24px, 5vw, 32px);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.5px;
   text-align: center;
+  color: var(--ink);
 }
 
 .timecode[data-idle='true'] {
-  color: var(--dim);
+  color: var(--muted-soft);
 }
 
 .state {
   justify-self: end;
-  font-size: 13px;
-  color: var(--dim);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .state[data-tone='error'] {
-  color: var(--alarm);
+  color: var(--error);
 }
 
 /* Viewer ------------------------------------------------------------------ */
 
 .viewer {
   padding: 0;
-  background: #000;
+  background: var(--viewer);
+  border-radius: var(--radius-md);
+  overflow: hidden;
   display: grid;
   place-items: center;
-  min-height: 300px;
+  min-height: 320px;
+  /* One continuous well: the viewer and the timeline read as a single instrument set into the
+     page, rather than as two unrelated dark boxes. */
+  margin-bottom: 0;
 }
 
-/* Height-led, width auto: a portrait phone video then stands tall and narrow instead of being
-   stretched across a 16:9 box with vast black margins either side. */
+/* The well sits inside the light page, so it gets the page's gutter rather than touching the edge. */
+.zone.viewer,
+.zone.timeline {
+  margin-inline: var(--space-lg);
+  padding: 0;
+}
+
+.zone.viewer {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.zone.timeline {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-top: 1px solid var(--hairline);
+}
+
+/* The well is one surface, so the band below it does not need a second rule under the rounding. */
+.zone.timeline + .zone {
+  border-top: 0;
+}
+
 .viewer video {
   display: block;
-  cursor: pointer;
   block-size: min(58vh, 460px);
   inline-size: auto;
   max-inline-size: 100%;
-  background: #000;
+  /* The element's own backdrop, behind any letterboxing the browser adds. */
+  background: var(--surface-soft);
+  cursor: pointer;
 }
 
 .viewer-empty {
-  color: var(--dim);
+  color: var(--muted-soft);
   text-align: center;
-  padding: 48px var(--gutter);
+  padding: var(--space-xxl) var(--space-lg);
   max-width: 44ch;
   margin: 0;
 }
@@ -146,7 +214,8 @@ body {
 
 .timeline {
   padding: 0;
-  background: var(--panel);
+  background: var(--surface-soft);
+  overflow: hidden;
 }
 
 .timeline canvas {
@@ -155,48 +224,17 @@ body {
   touch-action: none;
 }
 
-/* The canvas is the editing surface, so its focus ring sits inside rather than outside the zone. */
 .timeline canvas:focus-visible {
-  outline-offset: -2px;
+  outline-offset: -3px;
 }
 
-/* Announcements for screen readers: present to assistive tech, invisible on screen. */
-.sr-only {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-/* Transport --------------------------------------------------------------- */
+/* Controls ---------------------------------------------------------------- */
 
 .transport {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
   flex-wrap: wrap;
-}
-
-/* The one filled control on the page: play is the thing you reach for most. */
-.transport-group .play {
-  min-inline-size: 72px;
-  color: var(--ink);
-  background: var(--text);
-  border-color: var(--text);
-  font-weight: 500;
-}
-
-.transport-group .play:hover:not(:disabled) {
-  background: #fff;
-  border-color: #fff;
-}
-
-.transport-group .play:disabled {
-  color: var(--dim);
-  background: var(--panel);
-  border-color: var(--line);
 }
 
 /* Stepping controls read as one instrument: a single outline, hairlines between. */
@@ -210,90 +248,176 @@ body {
 }
 
 .transport-group button:first-child {
-  border-radius: 3px 0 0 3px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 
 .transport-group button:last-child {
   border-right-width: 1px;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 .divider {
   inline-size: 1px;
-  block-size: 22px;
-  background: var(--line);
-  margin: 0 4px;
+  block-size: 24px;
+  background: var(--hairline);
+  margin-inline: var(--space-xs);
+}
+
+button {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--surface-strong);
+  border-color: var(--ink);
+}
+
+button:disabled {
+  color: var(--muted-soft);
+  border-color: var(--hairline);
+  cursor: not-allowed;
+}
+
+/* The one filled control: play is what you reach for most. */
+.transport-group .play {
+  min-inline-size: 84px;
+  color: var(--on-primary);
+  background: var(--rausch);
+  border-color: var(--rausch);
+}
+
+.transport-group .play:hover:not(:disabled) {
+  background: var(--rausch-active);
+  border-color: var(--rausch-active);
+}
+
+.transport-group .play:disabled {
+  background: var(--rausch-disabled);
+  border-color: var(--rausch-disabled);
+  color: var(--on-primary);
 }
 
 .readout {
   display: flex;
-  gap: 18px;
+  gap: var(--space-lg);
   margin-left: auto;
-  color: var(--dim);
-  font-size: 13px;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .readout b {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-weight: 400;
-  color: var(--text);
-}
-
-/* Controls ---------------------------------------------------------------- */
-
-button {
-  font: inherit;
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 6px 13px;
-  cursor: pointer;
-}
-
-button:hover:not(:disabled) {
-  border-color: var(--dim);
-  background: #1e2429;
-}
-
-button:active:not(:disabled) {
-  background: #11161a;
-}
-
-button:disabled {
-  color: var(--dim);
-  cursor: not-allowed;
-  opacity: 0.55;
+  font-weight: 500;
+  color: var(--ink);
 }
 
 .hint {
-  color: var(--dim);
-  font-size: 13px;
+  color: var(--muted);
+  font-size: 14px;
   margin: 0;
   max-width: 72ch;
 }
 
 .alert {
-  margin: 0 0 10px;
-  color: var(--alarm);
-  font-size: 13px;
+  margin: 0 0 var(--space-md);
+  color: var(--error);
+  font-size: 14px;
+  font-weight: 500;
 }
 
-/* Export ------------------------------------------------------------------ */
+/* Agent -------------------------------------------------------------------- */
 
-.export {
+.agent-ask {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+/* The signature pill, borrowed from the search bar: the one input on the page. */
+.agent-ask input {
+  flex: 1;
+  min-inline-size: 0;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-full);
+  padding: 14px 24px;
+  box-shadow: var(--shadow);
+}
+
+.agent-ask input::placeholder {
+  color: var(--muted-soft);
+}
+
+.agent-ask input:disabled {
+  background: var(--surface-strong);
+  box-shadow: none;
+}
+
+.agent-ask button {
+  border-radius: var(--radius-full);
+  padding: 10px 24px;
+}
+
+/* A proposal is a held change, so it carries the brand colour rather than looking applied. */
+.agent-proposal {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  margin-top: var(--space-md);
+  padding: var(--space-base);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--rausch);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  box-shadow: var(--shadow);
 }
 
-/* Import ------------------------------------------------------------------ */
+.agent-proposal p {
+  margin: 0;
+  flex: 1;
+  min-inline-size: 12ch;
+  color: var(--ink);
+}
 
+.agent-proposal .accept {
+  color: var(--on-primary);
+  background: var(--rausch);
+  border-color: var(--rausch);
+  border-radius: var(--radius-full);
+  padding: 10px 20px;
+}
+
+.agent-proposal .accept:hover:not(:disabled) {
+  background: var(--rausch-active);
+  border-color: var(--rausch-active);
+}
+
+.dim {
+  color: var(--muted);
+}
+
+/* Export and import -------------------------------------------------------- */
+
+.export,
 .import {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-sm);
   flex-wrap: wrap;
 }
 
@@ -307,30 +431,36 @@ button:disabled {
 
 .import-label span {
   display: inline-block;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: var(--panel);
-  padding: 6px 13px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  padding: 10px 16px;
   cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
 }
 
 .import-label:hover span {
-  border-color: var(--dim);
-  background: #1e2429;
+  background: var(--surface-strong);
+  border-color: var(--ink);
 }
 
 /* The input is hidden, so its focus ring has to be drawn on the label instead. */
 .import-label:focus-within span {
-  outline: 2px solid var(--tungsten);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
 .copying {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--dim);
+  gap: var(--space-sm);
+  font-size: 14px;
+  color: var(--muted);
 }
 
 .copying progress {
@@ -338,33 +468,45 @@ button:disabled {
   block-size: 4px;
   appearance: none;
   border: 0;
-  background: var(--line);
+  border-radius: var(--radius-full);
+  background: var(--surface-strong);
+  overflow: hidden;
 }
 
 .copying progress::-webkit-progress-bar {
-  background: var(--line);
+  background: var(--surface-strong);
 }
 
 .copying progress::-webkit-progress-value {
-  background: var(--tungsten);
+  background: var(--rausch);
 }
 
 .copying progress::-moz-progress-bar {
-  background: var(--tungsten);
+  background: var(--rausch);
 }
 
 .copying b {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-weight: 400;
-  color: var(--text);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* Announcements for screen readers: present to assistive tech, invisible on screen. */
+.sr-only {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @media (max-width: 620px) {
   .masthead {
     grid-template-columns: 1fr;
     justify-items: start;
-    gap: 6px;
+    gap: var(--space-xs);
   }
 
   .timecode {
@@ -373,6 +515,10 @@ button:disabled {
 
   .state {
     justify-self: start;
+  }
+
+  .zone {
+    padding-inline: var(--space-base);
   }
 }
 
