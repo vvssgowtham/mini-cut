@@ -62,10 +62,14 @@ export function splitAvailability(
 }
 
 /**
- * Join the selected clip with the one after it.
+ * Join the selected clip with the one after it on the timeline.
  *
- * Only when the two are genuinely continuous: same media, no cut taken out between them, and
- * touching on the timeline. Joining across a cut would quietly reinstate footage the user removed.
+ * "After" means by start position, not by array index. `track.clips` keeps insertion order, so the
+ * two diverge as soon as anything is moved — and looking up the array neighbour then offered the
+ * wrong clip, or refused outright while the next clip sat plainly adjacent on screen.
+ *
+ * Only joins genuinely continuous clips: same media, no cut taken out between them, and touching on
+ * the timeline. Joining across a cut would quietly reinstate footage the user removed.
  */
 export function joinAvailability(
   project: Project,
@@ -75,10 +79,14 @@ export function joinAvailability(
   const found = locate(project, selectedClipId)
   if (!found) return { available: false, reason: 'Select a clip to join.' }
 
-  const right = found.clips[found.index + 1]
-  if (!right) return { available: false, reason: 'Nothing after this clip to join it to.' }
-
   const { clip: left } = found
+  const leftEnd = clipEnd(left)
+  // The nearest clip starting at or after this one ends.
+  const right = found.clips
+    .filter((candidate) => candidate.id !== left.id && candidate.start >= leftEnd)
+    .sort((a, b) => a.start - b.start)[0]
+
+  if (!right) return { available: false, reason: 'Nothing after this clip to join it to.' }
   if (left.sourceId !== right.sourceId) {
     return { available: false, reason: 'These clips come from different media.' }
   }
