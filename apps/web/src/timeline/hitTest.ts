@@ -6,8 +6,8 @@
  * tested without a browser.
  */
 
-import { clipEnd, type Clip } from '../editor/types'
-import { CLIP_HEIGHT_PX, CLIP_TOP_PX } from './draw'
+import { clipEnd, type Clip, type Ms } from '../editor/types'
+import { CLIP_HEIGHT_PX, CLIP_TOP_PX, RULER_HEIGHT_PX } from './draw'
 import { timeToX, visibleClips, type Viewport } from './viewport'
 
 /** Grab zone at each end of a clip, in CSS pixels. */
@@ -47,4 +47,19 @@ export function hitTest(
     return { clipId: clip.id, kind: 'body' }
   }
   return null
+}
+
+/**
+ * How close to the playhead counts as grabbing it.
+ *
+ * Wider than the 1px line it draws, because a 1px target cannot be hit with a mouse. The ruler is
+ * also a scrub target, which is the convention in every editor and gives a band you can always
+ * reach even when the playhead is off screen.
+ */
+export const PLAYHEAD_GRAB_PX = 7
+
+/** Whether a point should start scrubbing rather than editing a clip. */
+export function isScrubTarget(viewport: Viewport, playheadMs: Ms, x: number, y: number): boolean {
+  if (y <= RULER_HEIGHT_PX) return true
+  return Math.abs(timeToX(viewport, playheadMs) - x) <= PLAYHEAD_GRAB_PX
 }

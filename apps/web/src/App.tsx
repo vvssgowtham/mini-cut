@@ -396,8 +396,10 @@ export default function App() {
         </div>
 
         <p className="hint">
-          Drag a clip to move it, or its edges to trim. Scroll to pan, hold ctrl or cmd and scroll
-          to zoom, and click empty space to move the playhead.
+          Drag a clip to move it, or its edges to trim. Drag the playhead or the ruler to scrub.
+          Scroll to pan, hold ctrl or cmd and scroll to zoom. Left and right arrows step exactly one
+          frame, which is how to land a split precisely; S splits the selected clip at the playhead,
+          J joins it to the next, and space plays.
         </p>
       </footer>
     </div>

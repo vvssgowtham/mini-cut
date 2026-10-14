@@ -465,3 +465,65 @@ describe('framing the cut', () => {
     expect(lastScene()?.viewport.offsetMs).toBe(0)
   })
 })
+
+describe('scrubbing the playhead', () => {
+  function canvasWithCapture() {
+    const element = document.querySelector('canvas')
+    if (!element) throw new Error('no canvas rendered')
+    Object.assign(element, { setPointerCapture: () => {}, releasePointerCapture: () => {} })
+    return element
+  }
+
+  function pointer(element: Element, type: string, init: MouseEventInit = {}) {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...init })
+    Object.defineProperty(event, 'pointerId', { value: 1 })
+    element.dispatchEvent(event)
+    return event
+  }
+
+  /** Inside the ruler band, which is a scrub target anywhere along it. */
+  const RULER_Y = 4
+
+  it('follows the pointer while dragging in the ruler', () => {
+    const { playhead } = renderTimeline(false)
+    flushFrames()
+    const canvas = canvasWithCapture()
+
+    pointer(canvas, 'pointerdown', { clientX: 100, clientY: RULER_Y })
+    const afterPress = playhead.ms
+
+    pointer(canvas, 'pointermove', { clientX: 300, clientY: RULER_Y })
+    const afterDrag = playhead.ms
+    pointer(canvas, 'pointerup', { clientX: 300, clientY: RULER_Y })
+
+    // Dragging, not just a click: the playhead kept moving with the pointer.
+    expect(afterDrag).toBeGreaterThan(afterPress)
+  })
+
+  it('stops following once the pointer is released', () => {
+    const { playhead } = renderTimeline(false)
+    flushFrames()
+    const canvas = canvasWithCapture()
+
+    pointer(canvas, 'pointerdown', { clientX: 100, clientY: RULER_Y })
+    pointer(canvas, 'pointerup', { clientX: 100, clientY: RULER_Y })
+    const settled = playhead.ms
+
+    pointer(canvas, 'pointermove', { clientX: 500, clientY: RULER_Y })
+
+    expect(playhead.ms).toBe(settled)
+  })
+
+  it('edits nothing, so a scrub is not an undoable step', () => {
+    const { bus, playhead } = renderTimeline(false)
+    flushFrames()
+    const canvas = canvasWithCapture()
+
+    pointer(canvas, 'pointerdown', { clientX: 100, clientY: RULER_Y })
+    pointer(canvas, 'pointermove', { clientX: 260, clientY: RULER_Y })
+    pointer(canvas, 'pointerup', { clientX: 260, clientY: RULER_Y })
+
+    expect(playhead.ms).toBeGreaterThan(0)
+    expect(bus.canUndo).toBe(false)
+  })
+})

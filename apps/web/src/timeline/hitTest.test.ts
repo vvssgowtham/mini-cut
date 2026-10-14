@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Clip } from '../editor/types'
-import { CLIP_HEIGHT_PX, CLIP_TOP_PX } from './draw'
-import { TRIM_HANDLE_PX, hitTest } from './hitTest'
+import { CLIP_HEIGHT_PX, CLIP_TOP_PX, RULER_HEIGHT_PX } from './draw'
+import { PLAYHEAD_GRAB_PX, TRIM_HANDLE_PX, hitTest, isScrubTarget } from './hitTest'
 import type { Viewport } from './viewport'
 
 const viewport: Viewport = { offsetMs: 0, pxPerMs: 0.1, widthPx: 800 }
@@ -95,5 +95,34 @@ describe('overlap and scroll', () => {
     const scrolled: Viewport = { ...viewport, offsetMs: 100_000 }
 
     expect(hitTest(scrolled, clips, 100, midY)).toBeNull()
+  })
+})
+
+describe('isScrubTarget', () => {
+  const playheadMs = 3000 // x = 300 at this viewport
+
+  it('treats the ruler as a scrub band', () => {
+    // Always reachable, even when the playhead itself is off screen.
+    expect(isScrubTarget(viewport, playheadMs, 50, 0)).toBe(true)
+    expect(isScrubTarget(viewport, playheadMs, 50, RULER_HEIGHT_PX)).toBe(true)
+  })
+
+  it('treats the playhead line as grabbable below the ruler', () => {
+    expect(isScrubTarget(viewport, playheadMs, 300, midY)).toBe(true)
+  })
+
+  it('allows a margin either side, since a one pixel target cannot be hit', () => {
+    expect(isScrubTarget(viewport, playheadMs, 300 - PLAYHEAD_GRAB_PX, midY)).toBe(true)
+    expect(isScrubTarget(viewport, playheadMs, 300 + PLAYHEAD_GRAB_PX, midY)).toBe(true)
+  })
+
+  it('leaves the rest of the track to the clips', () => {
+    expect(isScrubTarget(viewport, playheadMs, 300 + PLAYHEAD_GRAB_PX + 1, midY)).toBe(false)
+    expect(isScrubTarget(viewport, playheadMs, 100, midY)).toBe(false)
+  })
+
+  it('follows the playhead as it moves', () => {
+    expect(isScrubTarget(viewport, 5000, 500, midY)).toBe(true)
+    expect(isScrubTarget(viewport, 5000, 300, midY)).toBe(false)
   })
 })
