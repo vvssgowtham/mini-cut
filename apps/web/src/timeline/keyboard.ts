@@ -16,12 +16,20 @@
 import { joinAvailability } from '../editor/clipActions'
 import type { Command } from '../editor/commands'
 import { clipEnd, type Clip, type Ms, type Project } from '../editor/types'
+import { DISPLAY_FPS } from '../media/timecode'
 
 /** A nudge is a visible step rather than a single frame; shift makes it a second. */
 export const NUDGE_MS = 100
 export const NUDGE_LARGE_MS = 1000
 
+/** One frame at the display rate, which is the unit an editor actually navigates in. */
+export const FRAME_MS = Math.round(1000 / DISPLAY_FPS)
+export const JUMP_MS = 1000
+
 export type KeyAction =
+  /** Move the playhead, in timeline milliseconds. */
+  | { type: 'scrub'; deltaMs: Ms }
+  | { type: 'scrub-to'; position: 'start' | 'end' }
   | { type: 'select'; direction: -1 | 1 }
   | { type: 'nudge'; deltaMs: Ms }
   /** Trim the selected clip's start or end to the playhead, the standard editing gesture. */
@@ -42,19 +50,33 @@ export type KeyEventLike = {
 /**
  * Map a key press to an intent, or null when the key is not ours.
  *
+ * The left and right arrows move the **playhead**, by one frame, because that is what they do in
+ * every editor and it is how you actually find a cut. They used to move the selection between
+ * clips, which left no key at all for the thing people reach for most. Clip selection moved to the
+ * up and down arrows, where a multi-track editor would eventually put it anyway.
+ *
  * Anything with ctrl or cmd held is left alone: those belong to undo, redo and the browser, and
- * quietly stealing them is how a web app breaks a user's muscle memory.
+ * quietly stealing them is how a web app breaks someone's muscle memory.
  */
 export function keyToAction(event: KeyEventLike): KeyAction | null {
   if (event.ctrlKey || event.metaKey) return null
 
   const nudge = event.shiftKey ? NUDGE_LARGE_MS : NUDGE_MS
+  const scrub = event.shiftKey ? JUMP_MS : FRAME_MS
 
   switch (event.key) {
     case 'ArrowLeft':
-      return event.altKey ? { type: 'nudge', deltaMs: -nudge } : { type: 'select', direction: -1 }
+      return event.altKey ? { type: 'nudge', deltaMs: -nudge } : { type: 'scrub', deltaMs: -scrub }
     case 'ArrowRight':
-      return event.altKey ? { type: 'nudge', deltaMs: nudge } : { type: 'select', direction: 1 }
+      return event.altKey ? { type: 'nudge', deltaMs: nudge } : { type: 'scrub', deltaMs: scrub }
+    case 'ArrowUp':
+      return { type: 'select', direction: -1 }
+    case 'ArrowDown':
+      return { type: 'select', direction: 1 }
+    case 'Home':
+      return { type: 'scrub-to', position: 'start' }
+    case 'End':
+      return { type: 'scrub-to', position: 'end' }
     case '[':
       return { type: 'trim-in' }
     case ']':
@@ -75,6 +97,8 @@ export function keyToAction(event: KeyEventLike): KeyAction | null {
 
 export type KeyResult = {
   commands: Command[]
+  /** Where to put the playhead, when the action moves it. */
+  playheadMs?: Ms
   /** The selection after this action; `undefined` leaves it alone. */
   selection?: string | null
   /** Why nothing happened, for the status line. Silent failure is worse than a sentence. */
@@ -104,6 +128,17 @@ export function applyKeyAction(
   newId: () => string = () => crypto.randomUUID(),
 ): KeyResult {
   const ordered = orderedClips(project)
+
+  // Scrubbing works on an empty timeline too; everything else needs something to act on.
+  if (action.type === 'scrub' || action.type === 'scrub-to') {
+    const end = ordered.reduce((furthest, entry) => Math.max(furthest, clipEnd(entry.clip)), 0)
+    if (action.type === 'scrub-to') {
+      return { commands: [], playheadMs: action.position === 'start' ? 0 : end }
+    }
+    // Clamped to the cut: scrubbing into empty space past the end has nothing to show.
+    return { commands: [], playheadMs: Math.min(end, Math.max(0, playheadMs + action.deltaMs)) }
+  }
+
   if (ordered.length === 0) return NOTHING
 
   if (action.type === 'select') {

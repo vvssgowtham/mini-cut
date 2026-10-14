@@ -19,11 +19,19 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CommandBus } from '../editor/history'
 import { useProject } from '../editor/useProject'
 import type { PlayheadStore } from '../media/playhead'
-import type { Clip, Ms } from '../editor/types'
+import { clipEnd, type Clip, type Ms } from '../editor/types'
 import { drawTimeline, TIMELINE_HEIGHT_PX } from './draw'
 import { hitTest, type Hit } from './hitTest'
 import { applyKeyAction, keyToAction } from './keyboard'
-import { panBy, xToTime, zoomAt, type Viewport } from './viewport'
+import {
+  clampOffset,
+  normalizeWheelDelta,
+  panBy,
+  scrollToReveal,
+  xToTime,
+  zoomAt,
+  type Viewport,
+} from './viewport'
 
 const DEFAULT_HEIGHT_PX = TIMELINE_HEIGHT_PX
 const INITIAL_PX_PER_MS = 0.1
@@ -66,6 +74,9 @@ export function Timeline({
   const [announcement, setAnnouncement] = useState('')
 
   /** Coalesce into one draw per frame: a wheel gesture can fire many events between frames. */
+  /** End of the cut, so panning cannot wander off into empty space. */
+  const contentEndRef = useRef(0)
+
   const scheduleDraw = useCallback(() => {
     if (frameRef.current !== null) return
     frameRef.current = requestAnimationFrame(() => {
@@ -95,6 +106,10 @@ export function Timeline({
   // effect, so they always see the current project.
   useEffect(() => {
     projectRef.current = project
+    contentEndRef.current = (project.tracks[0]?.clips ?? []).reduce(
+      (end, clip) => Math.max(end, clipEnd(clip)),
+      0,
+    )
     scheduleDraw()
   }, [project, scheduleDraw])
 
@@ -125,8 +140,17 @@ export function Timeline({
     return () => observer.disconnect()
   }, [heightPx, scheduleDraw])
 
-  // The video writes to the store during playback; redraw so the marker tracks the picture.
-  useEffect(() => playhead.subscribe(scheduleDraw), [playhead, scheduleDraw])
+  // The video writes to the store during playback, and the keyboard writes to it when scrubbing.
+  // Follow it: stepping frame by frame would otherwise walk the playhead straight off the edge of
+  // the screen with the view never catching up.
+  useEffect(
+    () =>
+      playhead.subscribe((ms) => {
+        viewportRef.current = scrollToReveal(viewportRef.current, ms)
+        scheduleDraw()
+      }),
+    [playhead, scheduleDraw],
+  )
 
   useEffect(() => {
     return () => {
@@ -152,6 +176,7 @@ export function Timeline({
       const currentProject = projectRef.current
       const result = applyKeyAction(action, currentProject, selectedRef.current, playhead.ms)
 
+      if (result.playheadMs !== undefined) playhead.set(result.playheadMs)
       if (result.selection !== undefined) onSelect(result.selection)
       // One group, so a two-command trim is a single undo step.
       if (result.commands.length > 0) bus.executeGroup(result.commands)
@@ -164,6 +189,9 @@ export function Timeline({
         const clips = currentProject.tracks[0]?.clips ?? []
         const index = clips.findIndex((clip) => clip.id === result.selection)
         setAnnouncement(`Clip ${index + 1} of ${clips.length} selected`)
+      } else if (result.playheadMs !== undefined) {
+        // Left unannounced: scrubbing fires per key press and would flood a screen reader. The
+        // timecode readout carries the position instead.
       } else if (result.commands.length > 0) {
         setAnnouncement(`${action.type.replace('-', ' ')} applied`)
       }
@@ -174,10 +202,16 @@ export function Timeline({
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLCanvasElement>) => {
       const { x } = localPoint(event)
+      const viewport = viewportRef.current
+      // A mouse wheel reports lines and some devices report pages; treating either as pixels makes
+      // scrolling either a crawl or a leap.
+      const raw = event.deltaX || event.deltaY
+      const deltaPx = normalizeWheelDelta(raw, event.deltaMode, viewport.widthPx)
+
       viewportRef.current =
         event.ctrlKey || event.metaKey
-          ? zoomAt(viewportRef.current, x, ZOOM_PER_WHEEL_NOTCH ** -event.deltaY)
-          : panBy(viewportRef.current, event.deltaX || event.deltaY)
+          ? zoomAt(viewport, x, ZOOM_PER_WHEEL_NOTCH ** -deltaPx)
+          : clampOffset(panBy(viewport, deltaPx), contentEndRef.current)
       scheduleDraw()
     },
     [scheduleDraw],

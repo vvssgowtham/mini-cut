@@ -2,7 +2,14 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Project } from '../editor/types'
-import { NUDGE_LARGE_MS, NUDGE_MS, applyKeyAction, keyToAction } from './keyboard'
+import {
+  FRAME_MS,
+  JUMP_MS,
+  NUDGE_LARGE_MS,
+  NUDGE_MS,
+  applyKeyAction,
+  keyToAction,
+} from './keyboard'
 
 /**
  *   0 ───── 5000 ──── 8000 ──── 12000
@@ -28,9 +35,26 @@ const ids = () => {
 }
 
 describe('keyToAction', () => {
-  it('walks the selection with the arrow keys', () => {
-    expect(keyToAction({ key: 'ArrowRight' })).toEqual({ type: 'select', direction: 1 })
-    expect(keyToAction({ key: 'ArrowLeft' })).toEqual({ type: 'select', direction: -1 })
+  it('scrubs a frame with the left and right arrows', () => {
+    expect(keyToAction({ key: 'ArrowRight' })).toEqual({ type: 'scrub', deltaMs: FRAME_MS })
+    expect(keyToAction({ key: 'ArrowLeft' })).toEqual({ type: 'scrub', deltaMs: -FRAME_MS })
+  })
+
+  it('scrubs a second with shift held', () => {
+    expect(keyToAction({ key: 'ArrowRight', shiftKey: true })).toEqual({
+      type: 'scrub',
+      deltaMs: JUMP_MS,
+    })
+  })
+
+  it('walks the selection with the up and down arrows', () => {
+    expect(keyToAction({ key: 'ArrowDown' })).toEqual({ type: 'select', direction: 1 })
+    expect(keyToAction({ key: 'ArrowUp' })).toEqual({ type: 'select', direction: -1 })
+  })
+
+  it('jumps to the ends with home and end', () => {
+    expect(keyToAction({ key: 'Home' })).toEqual({ type: 'scrub-to', position: 'start' })
+    expect(keyToAction({ key: 'End' })).toEqual({ type: 'scrub-to', position: 'end' })
   })
 
   it('nudges with alt held', () => {
@@ -60,6 +84,7 @@ describe('keyToAction', () => {
 
   it('ignores keys held with ctrl or cmd, which belong to undo and the browser', () => {
     expect(keyToAction({ key: 's', metaKey: true })).toBeNull()
+    expect(keyToAction({ key: 'ArrowRight', metaKey: true })).toBeNull()
     expect(keyToAction({ key: 'ArrowLeft', ctrlKey: true })).toBeNull()
     expect(keyToAction({ key: 'z', ctrlKey: true })).toBeNull()
   })
@@ -242,5 +267,46 @@ describe('join', () => {
 
     expect(result.commands).toEqual([])
     expect(result.message).toBeTruthy()
+  })
+})
+
+describe('scrubbing', () => {
+  it('moves the playhead by a frame without touching the project', () => {
+    const result = applyKeyAction({ type: 'scrub', deltaMs: FRAME_MS }, project, null, 1000)
+
+    expect(result.commands).toEqual([])
+    expect(result.playheadMs).toBe(1000 + FRAME_MS)
+  })
+
+  it('does not need a clip selected', () => {
+    expect(applyKeyAction({ type: 'scrub', deltaMs: -FRAME_MS }, project, null, 500).message).toBe(
+      undefined,
+    )
+  })
+
+  it('stops at the start rather than going negative', () => {
+    expect(applyKeyAction({ type: 'scrub', deltaMs: -5000 }, project, null, 100).playheadMs).toBe(0)
+  })
+
+  it('stops at the end of the cut rather than running into empty space', () => {
+    // The fixture's last clip ends at 12000.
+    expect(applyKeyAction({ type: 'scrub', deltaMs: 999_999 }, project, null, 0).playheadMs).toBe(
+      12_000,
+    )
+  })
+
+  it('jumps to either end', () => {
+    expect(
+      applyKeyAction({ type: 'scrub-to', position: 'start' }, project, null, 5000).playheadMs,
+    ).toBe(0)
+    expect(applyKeyAction({ type: 'scrub-to', position: 'end' }, project, null, 0).playheadMs).toBe(
+      12_000,
+    )
+  })
+
+  it('works on an empty timeline', () => {
+    const empty: Project = { version: 1, durationMs: 0, tracks: [{ id: 't1', clips: [] }] }
+
+    expect(applyKeyAction({ type: 'scrub', deltaMs: FRAME_MS }, empty, null, 0).playheadMs).toBe(0)
   })
 })

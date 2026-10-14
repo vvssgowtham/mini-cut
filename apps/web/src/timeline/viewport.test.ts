@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest'
 import {
   MAX_PX_PER_MS,
   MIN_PX_PER_MS,
+  clampOffset,
   clampZoom,
+  normalizeWheelDelta,
+  scrollToReveal,
   panBy,
   timeToX,
   visibleClips,
@@ -156,5 +159,73 @@ describe('visibleClips', () => {
     visibleClips({ ...base, pxPerMs: 0.01 }, input)
 
     expect(input.map((c) => c.id)).toEqual(['c', 'a', 'b'])
+  })
+})
+
+describe('clampOffset', () => {
+  it('leaves a view over the content alone', () => {
+    expect(clampOffset({ ...base, offsetMs: 2000 }, 60_000).offsetMs).toBe(2000)
+  })
+
+  it('never scrolls before the start', () => {
+    expect(clampOffset({ ...base, offsetMs: -5000 }, 60_000).offsetMs).toBe(0)
+  })
+
+  it('stops short of scrolling the content entirely off screen', () => {
+    // 800 px at 0.1 px/ms shows 8 s; half a screen of slack past a 20 s cut.
+    expect(clampOffset({ ...base, offsetMs: 999_999 }, 20_000).offsetMs).toBe(16_000)
+  })
+
+  it('pins to the start when the whole cut fits on screen', () => {
+    expect(clampOffset({ ...base, offsetMs: 5000 }, 2000).offsetMs).toBe(0)
+  })
+})
+
+describe('scrollToReveal', () => {
+  it('leaves a position that is already comfortably in view', () => {
+    const viewport: Viewport = { ...base }
+    expect(scrollToReveal(viewport, 4000)).toBe(viewport)
+  })
+
+  it('scrolls back when the position is off the left', () => {
+    const scrolled = scrollToReveal({ ...base, offsetMs: 10_000 }, 9000)
+
+    expect(timeToX(scrolled, 9000)).toBeCloseTo(80, 6)
+  })
+
+  it('scrolls forward when the position is off the right', () => {
+    const scrolled = scrollToReveal(base, 20_000)
+
+    expect(timeToX(scrolled, 20_000)).toBeCloseTo(800 - 80, 6)
+  })
+
+  it('scrolls when the position is inside the margin, not only when fully off screen', () => {
+    // 100 ms sits at x = 10, inside the 80 px margin.
+    const scrolled = scrollToReveal({ ...base, offsetMs: 0 }, 100)
+
+    expect(scrolled.offsetMs).toBe(0) // already as far left as it can go
+    expect(timeToX(scrolled, 100)).toBe(10)
+  })
+
+  it('never scrolls before the start to satisfy the margin', () => {
+    expect(scrollToReveal(base, 0).offsetMs).toBe(0)
+  })
+})
+
+describe('normalizeWheelDelta', () => {
+  it('passes pixel deltas through', () => {
+    expect(normalizeWheelDelta(120, 0, 800)).toBe(120)
+  })
+
+  it('converts line deltas, so a mouse wheel is not a crawl', () => {
+    expect(normalizeWheelDelta(3, 1, 800)).toBe(48)
+  })
+
+  it('converts page deltas, so a page device does not leap', () => {
+    expect(normalizeWheelDelta(1, 2, 800)).toBe(800)
+  })
+
+  it('keeps the direction', () => {
+    expect(normalizeWheelDelta(-3, 1, 800)).toBeLessThan(0)
   })
 })
