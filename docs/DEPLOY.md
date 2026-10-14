@@ -40,7 +40,9 @@ One of `ANTHROPIC_API_KEY` or `GOOGLE_API_KEY` is required; Anthropic wins if bo
 either the app still runs: the agent endpoint returns 503 and says it is not configured, rather than
 pretending to work.
 
-`GEMINI_MODEL` overrides the Gemini model, which is worth knowing when a model is retired.
+`GEMINI_MODEL` overrides the Gemini model. Worth knowing because Google retires models on its own
+schedule: when that happens the agent returns a 503 carrying Google's own message, which names the
+replacement to put in this variable.
 
 ## Routing `/api`
 
