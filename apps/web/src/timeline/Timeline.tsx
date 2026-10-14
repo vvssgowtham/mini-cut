@@ -22,7 +22,7 @@ import type { PlayheadStore } from '../media/playhead'
 import type { Waveform } from '../media/waveform'
 import { clipEnd, type Clip, type Ms } from '../editor/types'
 import { drawTimeline, TIMELINE_HEIGHT_PX } from './draw'
-import { hitTest, type Hit } from './hitTest'
+import { hitTest, isScrubTarget, type Hit } from './hitTest'
 import { clampStart, maxEndFor } from '../editor/placement'
 import { applyKeyAction, keyToAction } from './keyboard'
 import {
@@ -41,13 +41,21 @@ const DEFAULT_HEIGHT_PX = TIMELINE_HEIGHT_PX
 const INITIAL_PX_PER_MS = 0.1
 const ZOOM_PER_WHEEL_NOTCH = 1.0015
 
-type DragState = {
-  hit: Hit
-  /** The clip as it was when the drag started; the preview is derived from this, never compounded. */
-  original: Clip
-  grabMs: Ms
-  preview: Clip
-}
+/**
+ * Dragging either moves the playhead or edits a clip, and the two behave differently enough to be
+ * separate cases rather than one with a flag: a scrub commits nothing, while a clip edit builds a
+ * preview and dispatches a command on release.
+ */
+type DragState =
+  | { kind: 'scrub' }
+  | {
+      kind: 'clip'
+      hit: Hit
+      /** The clip as it was when the drag started; the preview derives from this, never compounds. */
+      original: Clip
+      grabMs: Ms
+      preview: Clip
+    }
 
 export type TimelineProps = {
   bus: CommandBus
@@ -106,10 +114,11 @@ export function Timeline({
 
       const drag = dragRef.current
       const clips = projectRef.current.tracks[0]?.clips ?? []
+      const preview = drag?.kind === 'clip' ? drag.preview : null
 
       drawTimeline(ctx, {
         viewport: viewportRef.current,
-        clips: drag ? clips.map((c) => (c.id === drag.preview.id ? drag.preview : c)) : clips,
+        clips: preview ? clips.map((c) => (c.id === preview.id ? preview : c)) : clips,
         playheadMs: playhead.ms,
         heightPx,
         devicePixelRatio: window.devicePixelRatio || 1,
@@ -330,6 +339,16 @@ export function Timeline({
       const { x, y } = localPoint(event)
       const viewport = viewportRef.current
       const clips = projectRef.current.tracks[0]?.clips ?? []
+
+      // Checked before the clips, so the playhead stays grabbable where it crosses one.
+      if (isScrubTarget(viewport, playhead.ms, x, y)) {
+        event.currentTarget.setPointerCapture(event.pointerId)
+        dragRef.current = { kind: 'scrub' }
+        playhead.set(xToTime(viewport, x))
+        scheduleDraw()
+        return
+      }
+
       const hit = hitTest(viewport, clips, x, y)
 
       if (!hit) {
@@ -346,7 +365,13 @@ export function Timeline({
       onSelect(hit.clipId)
 
       event.currentTarget.setPointerCapture(event.pointerId)
-      dragRef.current = { hit, original, grabMs: xToTime(viewport, x), preview: original }
+      dragRef.current = {
+        kind: 'clip',
+        hit,
+        original,
+        grabMs: xToTime(viewport, x),
+        preview: original,
+      }
     },
     [onSelect, playhead, scheduleDraw],
   )
@@ -354,11 +379,33 @@ export function Timeline({
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       const drag = dragRef.current
+
+      if (drag?.kind === 'scrub') {
+        const { x } = localPoint(event)
+        playhead.set(xToTime(viewportRef.current, x))
+        scheduleDraw()
+        return
+      }
+
       if (!drag) {
         // Hover drives the trim-handle affordance, so it only redraws when it actually changes.
         const { x: hx, y: hy } = localPoint(event)
         const clips = projectRef.current.tracks[0]?.clips ?? []
-        const next = hitTest(viewportRef.current, clips, hx, hy)?.clipId ?? null
+        const over = hitTest(viewportRef.current, clips, hx, hy)
+        const scrubbable = isScrubTarget(viewportRef.current, playhead.ms, hx, hy)
+
+        // The cursor says what a press will do before you make it, which is the only affordance a
+        // canvas can offer: it has no elements to style.
+        const canvas = event.currentTarget
+        canvas.style.cursor = scrubbable
+          ? 'col-resize'
+          : over?.kind === 'trim-start' || over?.kind === 'trim-end'
+            ? 'ew-resize'
+            : over
+              ? 'grab'
+              : 'default'
+
+        const next = over?.clipId ?? null
         if (next !== hoveredRef.current) {
           hoveredRef.current = next
           scheduleDraw()
@@ -394,7 +441,7 @@ export function Timeline({
       dragRef.current = { ...drag, preview }
       scheduleDraw()
     },
-    [scheduleDraw],
+    [playhead, scheduleDraw],
   )
 
   const handlePointerUp = useCallback(
@@ -404,6 +451,8 @@ export function Timeline({
       if (!drag) return
 
       event.currentTarget.releasePointerCapture(event.pointerId)
+      // Scrubbing changed the playhead as it went and edits nothing, so there is no command.
+      if (drag.kind === 'scrub') return
 
       const trackId = projectRef.current.tracks[0]?.id
       const { original, preview, hit } = drag
