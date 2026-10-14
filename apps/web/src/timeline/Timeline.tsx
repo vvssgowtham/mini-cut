@@ -228,8 +228,17 @@ export function Timeline({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
+  /**
+   * Panning and zooming the timeline, and nothing else.
+   *
+   * Attached natively rather than through React's `onWheel`, because React registers wheel
+   * listeners as passive and silently ignores `preventDefault` in them. Without it the page scrolls
+   * while the timeline pans — both move at once, which reads as the editor shaking — and ctrl and
+   * wheel zooms the browser instead of the timeline.
+   */
   const handleWheel = useCallback(
-    (event: React.WheelEvent<HTMLCanvasElement>) => {
+    (event: WheelEvent) => {
+      event.preventDefault()
       const { x } = localPoint(event)
       const viewport = viewportRef.current
       // A mouse wheel reports lines and some devices report pages; treating either as pixels makes
@@ -245,6 +254,14 @@ export function Timeline({
     },
     [scheduleDraw],
   )
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    // passive: false is the whole point — the default is passive, where preventDefault does nothing.
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
 
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -360,7 +377,6 @@ export function Timeline({
         role="application"
         aria-label={`Timeline, ${(project.tracks[0]?.clips ?? []).length} clips. Arrow keys select, alt and arrows nudge, bracket keys trim to the playhead, S splits, delete removes.`}
         style={{ width: '100%', height: heightPx, display: 'block', touchAction: 'none' }}
-        onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
