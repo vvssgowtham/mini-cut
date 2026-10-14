@@ -36,24 +36,25 @@ export type TimelineTheme = {
 /**
  * Mirrors the tokens in `index.css`; a canvas cannot read CSS variables.
  *
- * Light, to match the rest of the system. Clips are white cards on a soft grey track — the same
- * white-on-white separation the design language uses everywhere instead of layered elevation — and
- * Rausch marks the two things that are about position: the playhead and the selected clip.
+ * These are the well's values, not the page's: cool-toned darks, because a warm surround makes
+ * footage look cold and the convention in editing tools is to lean cool so skin tones read
+ * correctly. Rausch carries through from the light chrome and marks the two things that are about
+ * position — the playhead and the selected clip — so the brand does not stop at the frame.
  */
 export const defaultTheme: TimelineTheme = {
-  rulerBackground: '#f2f2f2',
-  rulerLine: '#c1c1c1',
-  rulerText: '#6a6a6a',
-  trackBackground: '#f7f7f7',
-  // A barely-there gradient: enough to read as a card lifted off the track, not enough to become a
-  // decoration in a system that is otherwise flat.
-  clipTop: '#ffffff',
-  clipBottom: '#fbfbfb',
-  clipStroke: '#dddddd',
-  clipText: '#222222',
+  rulerBackground: '#10141a',
+  rulerLine: '#39424f',
+  rulerText: '#8a94a3',
+  trackBackground: '#171c24',
+  // Clips are raised surfaces on the track; the gradient is slight, enough to read as lifted
+  // rather than as a hole cut out of it.
+  clipTop: '#2a323d',
+  clipBottom: '#222932',
+  clipStroke: '#3c4654',
+  clipText: '#e8ecf1',
   clipSelectedStroke: '#ff385c',
-  waveform: '#929292',
-  handle: '#6a6a6a',
+  waveform: '#7f8fa3',
+  handle: '#6a7585',
   playhead: '#ff385c',
 }
 

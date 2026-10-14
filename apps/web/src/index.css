@@ -34,8 +34,22 @@
   --border-strong: #c1c1c1;
   --on-primary: #ffffff;
 
-  /* The viewer, which is not a marketplace surface. */
+  /*
+   * The editor well: the viewer and timeline, which are not marketplace surfaces.
+   *
+   * Cool-toned rather than neutral black. A warm grey next to footage makes the picture look cold,
+   * and a cool one makes it look warm; the convention in editing tools is to lean cool so that
+   * skin tones read correctly against the surround. These are the only dark values in the system,
+   * and Rausch carries straight through them so the brand does not stop at the chrome.
+   */
   --viewer: #000000;
+  --well: #10141a;
+  --well-panel: #171c24;
+  --well-raised: #222932;
+  --well-raised-top: #2a323d;
+  --well-line: #39424f;
+  --well-text: #e8ecf1;
+  --well-muted: #8a94a3;
 
   /* Spacing */
   --space-xxs: 2px;
@@ -158,6 +172,30 @@ body {
   display: grid;
   place-items: center;
   min-height: 320px;
+  /* One continuous well: the viewer and the timeline read as a single instrument set into the
+     page, rather than as two unrelated dark boxes. */
+  margin-bottom: 0;
+}
+
+/* The well sits inside the light page, so it gets the page's gutter rather than touching the edge. */
+.zone.viewer,
+.zone.timeline {
+  margin-inline: var(--space-lg);
+  padding: 0;
+}
+
+.zone.viewer {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.zone.timeline {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+/* Hairlines belong between light bands; the well separates itself. */
+.zone.timeline + .zone,
+.zone.viewer + .zone.timeline {
+  border-top: 0;
 }
 
 .viewer video {
@@ -170,7 +208,7 @@ body {
 }
 
 .viewer-empty {
-  color: var(--muted-soft);
+  color: var(--well-muted);
   text-align: center;
   padding: var(--space-xxl) var(--space-lg);
   max-width: 44ch;
@@ -181,8 +219,7 @@ body {
 
 .timeline {
   padding: 0;
-  background: var(--surface-soft);
-  border-radius: var(--radius-md);
+  background: var(--well-panel);
   overflow: hidden;
 }
 
@@ -192,8 +229,10 @@ body {
   touch-action: none;
 }
 
+/* On the dark well, the light focus ring is the one that reads. */
 .timeline canvas:focus-visible {
-  outline-offset: -2px;
+  outline: 2px solid var(--well-text);
+  outline-offset: -3px;
 }
 
 /* Controls ---------------------------------------------------------------- */
