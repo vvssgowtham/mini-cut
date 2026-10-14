@@ -319,3 +319,56 @@ describe('wheel', () => {
     expect(wheel(document.body, { deltaY: 120 }).defaultPrevented).toBe(false)
   })
 })
+
+describe('dragging', () => {
+  function canvasElement() {
+    const element = document.querySelector('canvas')
+    if (!element) throw new Error('no canvas rendered')
+    return element
+  }
+
+  /** Counts layout reads, which is the cost that made dragging heavy. */
+  function countRectReads(element: Element) {
+    let reads = 0
+    const real = element.getBoundingClientRect.bind(element)
+    vi.spyOn(element, 'getBoundingClientRect').mockImplementation(() => {
+      reads += 1
+      return real()
+    })
+    return () => reads
+  }
+
+  function pointer(element: Element, type: string, init: PointerEventInit = {}) {
+    // jsdom has no PointerEvent, and MouseEvent carries everything these handlers read.
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...init })
+    Object.defineProperty(event, 'pointerId', { value: 1 })
+    element.dispatchEvent(event)
+    return event
+  }
+
+  it('reads layout once for a whole drag, not once per move', () => {
+    renderTimeline(false)
+    flushFrames()
+    const canvas = canvasElement()
+    Object.assign(canvas, {
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {},
+    })
+    const reads = countRectReads(canvas)
+
+    pointer(canvas, 'pointerdown', { clientX: 10, clientY: 50 })
+    for (let x = 11; x < 60; x++) pointer(canvas, 'pointermove', { clientX: x, clientY: 50 })
+    pointer(canvas, 'pointerup', { clientX: 60, clientY: 50 })
+
+    // Fifty moves; measuring the element on each is what forced layout at pointer frequency.
+    expect(reads()).toBeLessThanOrEqual(2)
+  })
+
+  it('stops the browser selecting page text when a drag starts', () => {
+    renderTimeline(false)
+    flushFrames()
+    const canvas = canvasElement()
+
+    expect(pointer(canvas, 'pointerdown', { clientX: 10, clientY: 50 }).defaultPrevented).toBe(true)
+  })
+})
