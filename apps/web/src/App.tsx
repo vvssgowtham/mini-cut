@@ -29,7 +29,7 @@ import { timelineEnd } from './media/timelineMap'
 import type { Waveform } from './media/waveform'
 import { requestWaveform } from './media/waveformClient'
 import { RestoreError } from './storage/restore'
-import { Timeline } from './timeline/Timeline'
+import { Timeline, type ViewControls } from './timeline/Timeline'
 import { ClipActions } from './ui/ClipActions'
 import { ExportButton } from './ui/ExportButton'
 import { ImportButton } from './ui/ImportButton'
@@ -72,6 +72,8 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [online, setOnline] = useState(() => navigator.onLine)
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
+  // Held in a ref: the toolbar calls them, but nothing renders differently because they exist.
+  const viewControlsRef = useRef<ViewControls | null>(null)
   const [restoreState, setRestoreState] = useState<RestoreState>(() =>
     hasIndexedDb() ? 'restoring' : 'ready',
   )
@@ -292,6 +294,9 @@ export default function App() {
           selectedClipId={selectedClipId}
           onSelect={setSelectedClipId}
           waveforms={waveforms}
+          onViewControls={useCallback((controls: ViewControls) => {
+            viewControlsRef.current = controls
+          }, [])}
         />
       </section>
 
@@ -342,6 +347,35 @@ export default function App() {
             onSelect={setSelectedClipId}
             disabled={restoreState !== 'ready'}
           />
+
+          <span className="divider" aria-hidden="true" />
+
+          <div className="transport-group" role="group" aria-label="Zoom">
+            <button
+              type="button"
+              onClick={() => viewControlsRef.current?.zoomOut()}
+              disabled={clips.length === 0}
+              title="Zoom out"
+            >
+              &minus;
+            </button>
+            <button
+              type="button"
+              onClick={() => viewControlsRef.current?.fit()}
+              disabled={clips.length === 0}
+              title="Fit the whole cut on screen"
+            >
+              Fit
+            </button>
+            <button
+              type="button"
+              onClick={() => viewControlsRef.current?.zoomIn()}
+              disabled={clips.length === 0}
+              title="Zoom in"
+            >
+              +
+            </button>
+          </div>
 
           <span className="divider" aria-hidden="true" />
 

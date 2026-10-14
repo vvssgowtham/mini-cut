@@ -6,8 +6,10 @@ import {
   MIN_PX_PER_MS,
   clampOffset,
   clampZoom,
+  fitToContent,
   normalizeWheelDelta,
   scrollToReveal,
+  zoomByCentre,
   panBy,
   timeToX,
   visibleClips,
@@ -227,5 +229,55 @@ describe('normalizeWheelDelta', () => {
 
   it('keeps the direction', () => {
     expect(normalizeWheelDelta(-3, 1, 800)).toBeLessThan(0)
+  })
+})
+
+describe('fitToContent', () => {
+  it('shows the whole cut at once', () => {
+    const fitted = fitToContent(base, 60_000)
+    const { startMs, endMs } = visibleRange(fitted)
+
+    expect(startMs).toBeLessThanOrEqual(0)
+    expect(endMs).toBeGreaterThanOrEqual(60_000)
+  })
+
+  it('zooms out for a long project and in for a short one', () => {
+    expect(fitToContent(base, 600_000).pxPerMs).toBeLessThan(fitToContent(base, 10_000).pxPerMs)
+  })
+
+  it('starts at time zero and leaves a margin after the last clip', () => {
+    // Nothing exists before zero, so the margin belongs on the right only.
+    const fitted = fitToContent(base, 60_000)
+
+    expect(timeToX(fitted, 0)).toBe(0)
+    expect(timeToX(fitted, 60_000)).toBeLessThan(fitted.widthPx)
+  })
+
+  it('respects the zoom limits rather than going arbitrarily small', () => {
+    expect(fitToContent(base, 10 ** 12).pxPerMs).toBeGreaterThanOrEqual(MIN_PX_PER_MS)
+  })
+
+  it('does nothing useful but stays valid for an empty timeline', () => {
+    expect(fitToContent(base, 0).offsetMs).toBe(0)
+  })
+
+  it('survives a canvas narrower than its own padding', () => {
+    const narrow: Viewport = { ...base, widthPx: 10 }
+
+    expect(() => fitToContent(narrow, 60_000)).not.toThrow()
+  })
+})
+
+describe('zoomByCentre', () => {
+  it('keeps the middle of the view in the middle', () => {
+    const middle = xToTime(base, base.widthPx / 2)
+    const zoomed = zoomByCentre(base, 2)
+
+    expect(xToTime(zoomed, zoomed.widthPx / 2)).toBeCloseTo(middle, 6)
+  })
+
+  it('zooms in and out', () => {
+    expect(zoomByCentre(base, 2).pxPerMs).toBeGreaterThan(base.pxPerMs)
+    expect(zoomByCentre(base, 0.5).pxPerMs).toBeLessThan(base.pxPerMs)
   })
 })

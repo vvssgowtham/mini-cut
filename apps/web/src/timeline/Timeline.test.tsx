@@ -55,6 +55,21 @@ function flushFrames() {
 }
 
 beforeEach(() => {
+  // jsdom never lays anything out, so a canvas reports zero width and every width-dependent
+  // behaviour — fitting, culling, hit-testing — correctly declines to do anything.
+  Object.defineProperty(HTMLCanvasElement.prototype, 'clientWidth', {
+    configurable: true,
+    get: () => 800,
+  })
+
+  // jsdom implements no pointer capture at all. Needed by every test that presses on a clip, which
+  // is every test of them now that the canvas has a width and hit-testing actually resolves.
+  Object.assign(HTMLElement.prototype, {
+    setPointerCapture: () => {},
+    releasePointerCapture: () => {},
+    hasPointerCapture: () => false,
+  })
+
   frames = new Map()
   nextFrameId = 1
   fillRectCalls = 0
@@ -350,10 +365,6 @@ describe('dragging', () => {
     renderTimeline(false)
     flushFrames()
     const canvas = canvasElement()
-    Object.assign(canvas, {
-      setPointerCapture: () => {},
-      releasePointerCapture: () => {},
-    })
     const reads = countRectReads(canvas)
 
     pointer(canvas, 'pointerdown', { clientX: 10, clientY: 50 })
@@ -370,5 +381,87 @@ describe('dragging', () => {
     const canvas = canvasElement()
 
     expect(pointer(canvas, 'pointerdown', { clientX: 10, clientY: 50 }).defaultPrevented).toBe(true)
+  })
+})
+
+describe('framing the cut', () => {
+  function lastScene() {
+    const calls = vi.mocked(drawTimeline).mock.calls
+    return calls[calls.length - 1]?.[1]
+  }
+
+  /** Longer than the default zoom can show, which is the case that was broken. */
+  const longProject: Project = {
+    version: 1,
+    durationMs: 90_000,
+    tracks: [
+      {
+        id: 't1',
+        clips: [
+          { id: 'a', sourceId: 'one.mp4', sourceIn: 0, sourceOut: 40_000, start: 0 },
+          { id: 'b', sourceId: 'one.mp4', sourceIn: 0, sourceOut: 38_000, start: 40_000 },
+        ],
+      },
+    ],
+  }
+
+  it('fits a cut longer than the default zoom can show', () => {
+    // At 800px and 0.1 px/ms the default view is eight seconds. A 78 second cut opened with most
+    // of itself off screen and nothing on screen to say so.
+    const bus = new CommandBus(longProject)
+    render(
+      <Timeline
+        bus={bus}
+        playhead={new PlayheadStore()}
+        selectedClipId={null}
+        onSelect={() => {}}
+      />,
+    )
+    flushFrames()
+
+    const scene = lastScene()
+    const visibleMs = (scene?.viewport.widthPx ?? 0) / (scene?.viewport.pxPerMs ?? 1)
+
+    expect(scene?.viewport.offsetMs).toBe(0)
+    expect(visibleMs).toBeGreaterThanOrEqual(78_000)
+  })
+
+  it('hands the parent controls for fit and zoom', () => {
+    let controls: { fit: () => void; zoomIn: () => void; zoomOut: () => void } | null = null
+    const bus = new CommandBus(project)
+    const playhead = new PlayheadStore()
+    render(
+      <Timeline
+        bus={bus}
+        playhead={playhead}
+        selectedClipId={null}
+        onSelect={() => {}}
+        onViewControls={(received) => {
+          controls = received
+        }}
+      />,
+    )
+    flushFrames()
+
+    expect(controls).not.toBeNull()
+
+    const before = lastScene()?.viewport.pxPerMs ?? 0
+    act(() => controls!.zoomIn())
+    flushFrames()
+
+    expect(lastScene()?.viewport.pxPerMs).toBeGreaterThan(before)
+  })
+
+  it('does not refit after an edit, which would move the view mid-cut', () => {
+    const { bus } = renderTimeline(false)
+    flushFrames()
+    act(() => {
+      bus.execute({ type: 'move', trackId: 't1', clipId: 'a', start: 60_000 })
+    })
+    flushFrames()
+
+    // Still framed for the original cut rather than silently rezoomed around the moved clip.
+    expect(lastScene()?.viewport.pxPerMs).toBe(lastScene()?.viewport.pxPerMs)
+    expect(lastScene()?.viewport.offsetMs).toBe(0)
   })
 })

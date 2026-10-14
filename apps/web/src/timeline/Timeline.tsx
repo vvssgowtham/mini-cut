@@ -27,11 +27,13 @@ import { clampStart, maxEndFor } from '../editor/placement'
 import { applyKeyAction, keyToAction } from './keyboard'
 import {
   clampOffset,
+  fitToContent,
   normalizeWheelDelta,
   panBy,
   scrollToReveal,
   xToTime,
   zoomAt,
+  zoomByCentre,
   type Viewport,
 } from './viewport'
 
@@ -53,9 +55,17 @@ export type TimelineProps = {
   playhead: PlayheadStore
   selectedClipId: string | null
   onSelect: (clipId: string | null) => void
+  /** Set once, so the parent can drive Fit and the zoom buttons from the toolbar. */
+  onViewControls?: (controls: ViewControls) => void
   /** Peaks per source id, drawn inside each clip as they arrive. */
   waveforms?: ReadonlyMap<string, Waveform>
   heightPx?: number
+}
+
+export type ViewControls = {
+  fit: () => void
+  zoomIn: () => void
+  zoomOut: () => void
 }
 
 export function Timeline({
@@ -63,6 +73,7 @@ export function Timeline({
   playhead,
   selectedClipId,
   onSelect,
+  onViewControls,
   waveforms,
   heightPx = DEFAULT_HEIGHT_PX,
 }: TimelineProps) {
@@ -174,6 +185,42 @@ export function Timeline({
       frameRef.current = null
     }
   }, [])
+
+  const fit = useCallback(() => {
+    viewportRef.current = fitToContent(viewportRef.current, contentEndRef.current)
+    scheduleDraw()
+  }, [scheduleDraw])
+
+  const zoom = useCallback(
+    (factor: number) => {
+      viewportRef.current = clampOffset(
+        zoomByCentre(viewportRef.current, factor),
+        contentEndRef.current,
+      )
+      scheduleDraw()
+    },
+    [scheduleDraw],
+  )
+
+  useEffect(() => {
+    onViewControls?.({ fit, zoomIn: () => zoom(1.6), zoomOut: () => zoom(1 / 1.6) })
+  }, [fit, onViewControls, zoom])
+
+  /**
+   * Frame the whole cut the first time there is one.
+   *
+   * The working zoom shows about twelve seconds, so importing a minute of footage left most of the
+   * project off screen with nothing on screen to say it was there. Only on first arrival: refitting
+   * on every edit would yank the view out from under someone mid-cut.
+   */
+  const hasFittedRef = useRef(false)
+  useEffect(() => {
+    if (hasFittedRef.current || contentEndRef.current <= 0 || viewportRef.current.widthPx <= 0) {
+      return
+    }
+    hasFittedRef.current = true
+    fit()
+  }, [project, fit])
 
   /**
    * The canvas position, read once and remembered.

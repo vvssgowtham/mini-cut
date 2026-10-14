@@ -122,3 +122,28 @@ export function normalizeWheelDelta(delta: number, deltaMode: number, viewportPx
   if (deltaMode === 2) return delta * viewportPx // WheelEvent.DOM_DELTA_PAGE
   return delta
 }
+
+/** Breathing room after the last clip, so it does not end flush against the edge. */
+export const FIT_PADDING_PX = 24
+
+/**
+ * Zoom and scroll so the whole cut is visible at once.
+ *
+ * The default zoom is chosen for working on a cut, not for meeting one: at 0.1 px/ms a 1180px
+ * canvas shows about twelve seconds, so importing a minute of footage put most of the project off
+ * screen with nothing on screen to suggest it was there. Fitting on arrival means the first thing
+ * you see is the whole thing.
+ */
+export function fitToContent(viewport: Viewport, contentEndMs: Ms): Viewport {
+  const usablePx = viewport.widthPx - FIT_PADDING_PX
+  if (contentEndMs <= 0 || usablePx <= 0) return { ...viewport, offsetMs: 0 }
+
+  // Padding goes on the right only. The left edge is time zero, and there is nothing before it to
+  // scroll into — a margin there would mean showing negative time.
+  return { ...viewport, pxPerMs: clampZoom(usablePx / contentEndMs), offsetMs: 0 }
+}
+
+/** Zoom by a factor about the centre of the view, for a button rather than a pointer. */
+export function zoomByCentre(viewport: Viewport, factor: number): Viewport {
+  return zoomAt(viewport, viewport.widthPx / 2, factor)
+}
