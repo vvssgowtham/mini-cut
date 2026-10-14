@@ -15,9 +15,17 @@ import { StrictMode } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CommandBus } from '../editor/history'
+import { drawTimeline } from './draw'
 import type { Project } from '../editor/types'
 import { PlayheadStore } from '../media/playhead'
 import { Timeline } from './Timeline'
+
+// Spied on so the tests can read the scene the component asked for, which is the only way to see
+// where the view is pointing.
+vi.mock('./draw', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./draw')>()
+  return { ...actual, drawTimeline: vi.fn(actual.drawTimeline) }
+})
 
 const project: Project = {
   version: 1,
@@ -147,5 +155,37 @@ describe('draw loop', () => {
     })
 
     expect(frames.size).toBe(1)
+  })
+})
+
+describe('following the playhead', () => {
+  /** The viewport handed to the most recent draw. */
+  function lastViewport() {
+    const calls = vi.mocked(drawTimeline).mock.calls
+    return calls[calls.length - 1]?.[1].viewport
+  }
+
+  it('scrolls to keep the playhead in view when it moves off screen', () => {
+    const { playhead } = renderTimeline(false)
+    flushFrames()
+    const before = lastViewport()?.offsetMs ?? 0
+
+    // Far beyond the visible span at the default zoom.
+    act(() => playhead.set(600_000))
+    flushFrames()
+
+    const after = lastViewport()?.offsetMs ?? 0
+    expect(after).toBeGreaterThan(before)
+  })
+
+  it('leaves the view alone while the playhead stays in view', () => {
+    const { playhead } = renderTimeline(false)
+    flushFrames()
+    const before = lastViewport()?.offsetMs
+
+    act(() => playhead.set(500))
+    flushFrames()
+
+    expect(lastViewport()?.offsetMs).toBe(before)
   })
 })

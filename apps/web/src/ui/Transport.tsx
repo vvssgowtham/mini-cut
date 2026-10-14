@@ -48,14 +48,19 @@ export function Transport({ playhead, playback, durationMs, disabled }: Transpor
       >
         {isPlaying ? 'Pause' : 'Play'}
       </button>
-      <button type="button" onClick={() => playhead.set(0)} disabled={disabled} title="Go to start">
+      <button
+        type="button"
+        onClick={() => playhead.set(0)}
+        disabled={disabled}
+        title="Go to start (Home)"
+      >
         Start
       </button>
       <button
         type="button"
         onClick={() => step(-FRAME_MS)}
         disabled={disabled}
-        title="Back one frame"
+        title="Back one frame (left arrow)"
       >
         &minus;1 frame
       </button>
@@ -63,7 +68,7 @@ export function Transport({ playhead, playback, durationMs, disabled }: Transpor
         type="button"
         onClick={() => step(FRAME_MS)}
         disabled={disabled}
-        title="Forward one frame"
+        title="Forward one frame (right arrow)"
       >
         +1 frame
       </button>
@@ -71,7 +76,7 @@ export function Transport({ playhead, playback, durationMs, disabled }: Transpor
         type="button"
         onClick={() => playhead.set(durationMs)}
         disabled={disabled}
-        title="Go to end"
+        title="Go to end (End)"
       >
         End
       </button>

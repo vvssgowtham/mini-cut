@@ -77,3 +77,48 @@ export function visibleClips(viewport: Viewport, clips: readonly Clip[]): Clip[]
     .filter((clip) => clip.start < endMs && clipEnd(clip) > startMs)
     .sort((a, b) => a.start - b.start)
 }
+
+/**
+ * Keep the view over the content.
+ *
+ * Panning was previously unbounded at the right, so a flick of the wheel could leave you staring at
+ * empty space minutes past the end of the cut with nothing on screen to navigate back by. A margin
+ * of trailing space is kept, because editing the last clip needs somewhere to drag it to.
+ */
+export function clampOffset(viewport: Viewport, contentEndMs: Ms): Viewport {
+  const visibleMs = viewport.widthPx / viewport.pxPerMs
+  // Half a screen of slack past the end: enough room to work at the tail, not enough to get lost.
+  const maxOffset = Math.max(0, contentEndMs - visibleMs / 2)
+  return { ...viewport, offsetMs: Math.min(maxOffset, Math.max(0, viewport.offsetMs)) }
+}
+
+/**
+ * Scroll the least amount that brings `ms` into view, or return the viewport untouched if it is
+ * already comfortably inside.
+ *
+ * Without this, stepping the playhead frame by frame walks it straight off the edge of the screen
+ * and the view never follows. The margin stops it sitting flush against the edge, where you cannot
+ * see what is coming.
+ */
+export function scrollToReveal(viewport: Viewport, ms: Ms, marginPx = 80): Viewport {
+  const x = timeToX(viewport, ms)
+  if (x >= marginPx && x <= viewport.widthPx - marginPx) return viewport
+
+  const target = x < marginPx ? marginPx : viewport.widthPx - marginPx
+  return { ...viewport, offsetMs: Math.max(0, ms - target / viewport.pxPerMs) }
+}
+
+/**
+ * Wheel deltas in pixels, whatever the device reported.
+ *
+ * A trackpad reports pixels, but a mouse wheel reports lines and some devices report pages. Treating
+ * a line count as a pixel count makes a mouse wheel barely move the view, while treating a page
+ * count as pixels makes it leap. Both feel broken in different directions.
+ */
+export const LINE_HEIGHT_PX = 16
+
+export function normalizeWheelDelta(delta: number, deltaMode: number, viewportPx: number): number {
+  if (deltaMode === 1) return delta * LINE_HEIGHT_PX // WheelEvent.DOM_DELTA_LINE
+  if (deltaMode === 2) return delta * viewportPx // WheelEvent.DOM_DELTA_PAGE
+  return delta
+}
