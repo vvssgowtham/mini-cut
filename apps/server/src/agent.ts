@@ -82,6 +82,23 @@ const EDIT_TOOL: Anthropic.Tool = {
   },
 }
 
+/**
+ * The provider refused the credentials.
+ *
+ * Separate from a general failure because the remedy is completely different: "the editing service
+ * is unavailable" sends someone looking at their network and their code, when the answer is one
+ * wrong line in a file. It never carries the key or the provider's raw response.
+ */
+export class AgentAuthError extends Error {
+  constructor(provider: string) {
+    super(
+      `${provider} rejected the API key. Check the value in apps/server/.env — an expired key, or ` +
+        `one for a different product, both look like this.`,
+    )
+    this.name = 'AgentAuthError'
+  }
+}
+
 export class AgentError extends Error {
   constructor(message: string) {
     super(message)
@@ -103,23 +120,33 @@ function promptFor(request: AgentRequest): string {
     .join('\n\n')
 }
 
+/** 401 and 403 mean the credentials, whichever provider said so. */
+function isAuthStatus(status: unknown): boolean {
+  return status === 401 || status === 403
+}
+
 export function createAnthropicPlanner(apiKey: string): EditPlanner {
   const client = new Anthropic({ apiKey })
 
   return async (request) => {
-    const message = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      tools: [EDIT_TOOL],
-      tool_choice: { type: 'tool', name: EDIT_TOOL.name },
-      messages: [
-        {
-          role: 'user',
-          content: promptFor(request),
-        },
-      ],
-    })
+    const message = await client.messages
+      .create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system: SYSTEM_PROMPT,
+        tools: [EDIT_TOOL],
+        tool_choice: { type: 'tool', name: EDIT_TOOL.name },
+        messages: [
+          {
+            role: 'user',
+            content: promptFor(request),
+          },
+        ],
+      })
+      .catch((error: unknown) => {
+        if (isAuthStatus((error as { status?: unknown }).status)) throw new AgentAuthError('Claude')
+        throw error
+      })
 
     const toolUse = message.content.find((block) => block.type === 'tool_use')
     if (!toolUse) throw new AgentError('the model did not return an edit')
@@ -255,6 +282,12 @@ export function createGeminiPlanner(apiKey: string, model = GEMINI_MODEL): EditP
     )
 
     const body = (await response.json()) as GeminiReply
+    // Gemini answers an invalid key with 400 and an explanatory message, not 401 — found by
+    // sending it a deliberately wrong key — so the message has to be read as well as the status.
+    const detail = body.error?.message ?? ''
+    if (isAuthStatus(response.status) || /api[ _-]?key/i.test(detail)) {
+      throw new AgentAuthError('Gemini')
+    }
     if (!response.ok) {
       throw new Error(`Gemini returned ${response.status}: ${body.error?.message ?? 'no detail'}`)
     }

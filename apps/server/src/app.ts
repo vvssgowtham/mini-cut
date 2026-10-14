@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import { agentRequestSchema, type AgentResponse, type HealthResponse } from '@mini-cut/shared'
 import {
+  AgentAuthError,
   AgentError,
   createAnthropicPlanner,
   createGeminiPlanner,
@@ -63,6 +64,12 @@ export function buildApp(options: AppOptions = {}) {
     } catch (error) {
       // An unusable edit is the model's failure, not the caller's, so it is 422 rather than 400.
       // The message is safe to show: it describes the edit, never the key or the upstream call.
+      // A rejected key is configuration, not a transient outage, so it reads as 503 and says what
+      // to change rather than sending someone to look at their network.
+      if (error instanceof AgentAuthError) {
+        reply.code(503)
+        return { ok: false, error: error.message }
+      }
       if (error instanceof AgentError) {
         reply.code(422)
         return { ok: false, error: error.message }

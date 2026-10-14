@@ -11,23 +11,21 @@
  *   npm run agent:try -w @mini-cut/server -- "cut the first 10 seconds"
  */
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { AgentError, createAnthropicPlanner, createGeminiPlanner, planEdit } from './agent'
+import {
+  AgentAuthError,
+  AgentError,
+  createAnthropicPlanner,
+  createGeminiPlanner,
+  planEdit,
+} from './agent'
+import { loadEnvFile } from './env'
 import type { EditPlanner } from './agent'
 import type { AgentRequest } from '@mini-cut/shared'
 
-/** Read .env directly rather than depending on a flag being passed through two layers of npm. */
-function readEnv(name: string): string | undefined {
-  if (process.env[name]) return process.env[name]
-  try {
-    const file = readFileSync(join(process.cwd(), '.env'), 'utf8')
-    const line = file.split('\n').find((candidate) => candidate.startsWith(`${name}=`))
-    return line?.slice(name.length + 1).trim() || undefined
-  } catch {
-    return undefined
-  }
-}
+// The same loader the server uses, so the two cannot disagree about whether a key is configured.
+loadEnvFile()
+
+const readEnv = (name: string): string | undefined => process.env[name]
 
 /**
  * Whichever provider has a key.
@@ -96,6 +94,10 @@ async function main() {
   } catch (error) {
     // An AgentError is the model being refused or declining, which is a result worth reading.
     // Anything else is the call itself failing.
+    if (error instanceof AgentAuthError) {
+      console.error(error.message)
+      process.exit(1)
+    }
     if (error instanceof AgentError) {
       console.error(`Rejected: ${error.message}`)
       process.exit(2)
