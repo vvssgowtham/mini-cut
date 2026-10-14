@@ -148,3 +148,100 @@ describe('playback across a clip boundary', () => {
     expect(pause).toHaveBeenCalled()
   })
 })
+
+describe('playing straight through a boundary', () => {
+  /** Drives the element the way playback does: report a source time, let the component react. */
+  function advanceTo(video: HTMLVideoElement, seconds: number) {
+    Object.defineProperty(video, 'currentTime', {
+      value: seconds,
+      writable: true,
+      configurable: true,
+    })
+    fireEvent.timeUpdate(video)
+  }
+
+  it('carries on into the next clip instead of stopping at the join', () => {
+    const playhead = new PlayheadStore()
+    const playback = new PlaybackStore()
+    render(
+      <VideoPlayer
+        clips={[first, second]}
+        sources={sources}
+        playhead={playhead}
+        playback={playback}
+      />,
+    )
+    const video = document.querySelector('video')
+    if (!video) throw new Error('no video element rendered')
+    playback.reportPlaying(true)
+
+    // Run the first clip out: it shows source 0..3000.
+    act(() => advanceTo(video, 3.0))
+
+    // The element should now be on the second file, and the playhead inside the second clip.
+    expect(video.getAttribute('src')).toBe('blob:two')
+    act(() => fireEvent.loadedMetadata(video))
+
+    expect(playhead.ms).toBeGreaterThanOrEqual(second.start)
+  })
+
+  it('keeps reporting position once the second clip is playing', () => {
+    const playhead = new PlayheadStore()
+    const playback = new PlaybackStore()
+    render(
+      <VideoPlayer
+        clips={[first, second]}
+        sources={sources}
+        playhead={playhead}
+        playback={playback}
+      />,
+    )
+    const video = document.querySelector('video')
+    if (!video) throw new Error('no video element rendered')
+    playback.reportPlaying(true)
+
+    act(() => advanceTo(video, 3.0))
+    act(() => fireEvent.loadedMetadata(video))
+
+    // A second into the second clip: the playhead must track it, not sit at the join.
+    act(() => advanceTo(video, 1.0))
+
+    expect(playhead.ms).toBe(second.start + 1000)
+  })
+})
+
+describe('when a clip has no media loaded', () => {
+  function advanceTo(video: HTMLVideoElement, seconds: number) {
+    Object.defineProperty(video, 'currentTime', {
+      value: seconds,
+      writable: true,
+      configurable: true,
+    })
+    fireEvent.timeUpdate(video)
+  }
+
+  it('says the media is missing rather than showing the empty-project prompt', () => {
+    // Only the first clip's media is available — the second never opened.
+    const partial = new Map([['one.mp4', 'blob:one']])
+    const playhead = new PlayheadStore()
+    const playback = new PlaybackStore()
+    render(
+      <VideoPlayer
+        clips={[first, second]}
+        sources={partial}
+        playhead={playhead}
+        playback={playback}
+      />,
+    )
+    const video = document.querySelector('video')
+    if (!video) throw new Error('no video element rendered')
+    playback.reportPlaying(true)
+
+    act(() => advanceTo(video, 3.0))
+
+    // Playback stops because there is nothing to play, and the viewer explains why rather than
+    // inviting an import as though the project were empty.
+    expect(playback.isPlaying).toBe(false)
+    expect(document.body.textContent).toMatch(/media could not be opened/i)
+  })
+})

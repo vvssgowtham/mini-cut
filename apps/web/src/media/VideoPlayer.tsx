@@ -109,6 +109,7 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
         return
       }
 
+      // Still on the previous file, which is normal for the moment a source swap takes.
       if (current.sourceId !== activeSourceId) return
 
       if (sourceMs >= current.sourceOut) {
@@ -189,9 +190,14 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
   }
 
   if (!src) {
+    // Two different situations, and conflating them is how a clip with missing media came to look
+    // like an empty project: one is an invitation, the other is a fault.
     return (
-      <p className="viewer-empty">
-        Import a video to start cutting. It stays on this device — nothing is uploaded.
+      <p className="viewer-empty" role={clips.length > 0 ? 'alert' : undefined}>
+        {clips.length > 0
+          ? 'This clip\u2019s media could not be opened. It may have been cleared from this ' +
+            'browser\u2019s storage — import the file again to restore it.'
+          : 'Import a video to start cutting. It stays on this device \u2014 nothing is uploaded.'}
       </p>
     )
   }

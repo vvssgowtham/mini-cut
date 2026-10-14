@@ -88,15 +88,19 @@ export default function App() {
   }, [])
 
   const addSource = useCallback(async (sourceId: string) => {
+    // Checked before opening, not inside the state updater. React may call an updater more than
+    // once for the same change — StrictMode does so deliberately — and revoking a URL from inside
+    // one can revoke the very URL it just stored, leaving a clip whose media silently will not
+    // load. An updater has to be free of side effects for exactly this reason.
+    if (sourcesRef.current.has(sourceId)) return
+
     const url = await openOpfsAsUrl(sourceId)
-    setSources((current) => {
-      if (current.has(sourceId)) {
-        // Already open: drop the duplicate rather than leaking it.
-        revokeOpfsUrl(url)
-        return current
-      }
-      return new Map(current).set(sourceId, url)
-    })
+    if (sourcesRef.current.has(sourceId)) {
+      // Opened concurrently by another caller while this one awaited.
+      revokeOpfsUrl(url)
+      return
+    }
+    setSources((current) => new Map(current).set(sourceId, url))
   }, [])
 
   useEffect(() => {
@@ -129,9 +133,28 @@ export default function App() {
         const sourceIds = new Set(
           restored.tracks.flatMap((track) => track.clips.map((clip) => clip.sourceId)),
         )
-        for (const sourceId of sourceIds) {
-          await addSource(sourceId)
-          analyseAudio(sourceId)
+
+        // Independently, so one missing file does not stop the rest from opening. Sequentially
+        // ordered loops abort on the first throw, which left every later clip without media and
+        // playback stalling the moment it reached one.
+        const failures = await Promise.all(
+          [...sourceIds].map(async (sourceId) => {
+            try {
+              await addSource(sourceId)
+              analyseAudio(sourceId)
+              return null
+            } catch {
+              return sourceId
+            }
+          }),
+        )
+
+        const missing = failures.filter((sourceId): sourceId is string => sourceId !== null)
+        if (missing.length > 0 && !cancelled) {
+          setNotice(
+            `${missing.length} clip${missing.length === 1 ? "'s" : "s'"} media could not be opened. ` +
+              'Those clips will not play; the rest of the project is intact.',
+          )
         }
       } catch (error) {
         // A save from a newer build is kept, not overwritten: the user can reopen it in the tab
