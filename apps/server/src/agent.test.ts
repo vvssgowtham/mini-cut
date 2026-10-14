@@ -6,9 +6,10 @@
  * is that nothing it returns reaches the timeline unchecked.
  */
 
-import { afterAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app'
-import type { EditPlanner } from './agent'
+import type { AgentRequest } from '@mini-cut/shared'
+import { AgentAuthError, AgentConfigError, createGeminiPlanner, type EditPlanner } from './agent'
 
 const clips = [
   { id: 'a', sourceIn: 0, sourceOut: 10_000, start: 0 },
@@ -212,5 +213,161 @@ describe('when the model cannot carry out the instruction', () => {
 
     expect(response.statusCode).toBe(422)
     expect(response.json().error).toMatch(/no audio on this timeline/)
+  })
+})
+
+describe('provider selection', () => {
+  const keys = ['ANTHROPIC_API_KEY', 'GOOGLE_API_KEY'] as const
+
+  /** Runs `body` with only the given keys set, restoring the environment afterwards. */
+  async function withOnly(
+    set: Partial<Record<(typeof keys)[number], string>>,
+    body: () => Promise<void>,
+  ) {
+    const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+    for (const key of keys) delete process.env[key]
+    Object.assign(process.env, set)
+    try {
+      await body()
+    } finally {
+      for (const key of keys) {
+        if (previous[key] === undefined) delete process.env[key]
+        else process.env[key] = previous[key]
+      }
+    }
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('uses Gemini when only a Google key is set', async () => {
+    // fetch is stubbed so this never leaves the machine; the point is which provider was chosen.
+    const fetched = vi.fn<(url: string | URL | Request) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: { parts: [{ functionCall: { args: { summary: 'ok', operations: [] } } }] },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetched)
+
+    await withOnly({ GOOGLE_API_KEY: 'AIza-test' }, async () => {
+      const app = buildApp()
+      await post(app, { instruction: 'cut it', clips })
+      await app.close()
+    })
+
+    expect(fetched).toHaveBeenCalled()
+    expect(String(fetched.mock.calls[0]?.[0])).toContain('generativelanguage.googleapis')
+  })
+
+  it('says which variables to set when neither is present', async () => {
+    await withOnly({}, async () => {
+      const app = buildApp()
+      const response = await post(app, { instruction: 'cut it', clips })
+      await app.close()
+
+      expect(response.statusCode).toBe(503)
+      expect(response.json().error).toMatch(/ANTHROPIC_API_KEY or GOOGLE_API_KEY/)
+    })
+  })
+})
+
+describe('a rejected key', () => {
+  it('says the key was rejected rather than reporting an outage', async () => {
+    const app = appWith(async () => {
+      throw new AgentAuthError('Gemini')
+    })
+
+    const response = await post(app, { instruction: 'cut it', clips })
+
+    expect(response.statusCode).toBe(503)
+    expect(response.json().error).toMatch(/rejected the API key/)
+    expect(response.json().error).toMatch(/apps\/server\/\.env/)
+  })
+})
+
+describe('Gemini key rejection', () => {
+  const sample: AgentRequest = { instruction: 'cut it', clips }
+
+  function withFetch(status: number, body: unknown) {
+    return vi.fn(
+      async () => new Response(JSON.stringify(body), { status }),
+    ) as unknown as typeof fetch
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('treats a 400 about the API key as a rejected key, not a bad request', async () => {
+    // Gemini reports an invalid key as 400 rather than 401, so the status alone is not enough.
+    vi.stubGlobal(
+      'fetch',
+      withFetch(400, { error: { message: 'API key not valid. Please pass a valid API key.' } }),
+    )
+
+    await expect(createGeminiPlanner('AIzaWrong')(sample)).rejects.toBeInstanceOf(AgentAuthError)
+  })
+
+  it('still reports other failures as themselves', async () => {
+    vi.stubGlobal('fetch', withFetch(503, { error: { message: 'model is overloaded' } }))
+
+    await expect(createGeminiPlanner('AIzaFine')(sample)).rejects.toThrow(/overloaded/)
+  })
+})
+
+describe('a retired model', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("passes through the provider's message, which names the replacement", async () => {
+    // Models are retired on Google's schedule, so this recurs; the useful detail is theirs.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                message:
+                  'This model models/gemini-old is no longer available. Please update your code to use models/gemini-new.',
+              },
+            }),
+            { status: 404 },
+          ),
+      ),
+    )
+
+    const failure = await createGeminiPlanner(
+      'AIzaFine',
+      'gemini-old',
+    )({
+      instruction: 'cut it',
+      clips,
+    }).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(AgentConfigError)
+    expect((failure as Error).message).toMatch(/gemini-new/)
+    expect((failure as Error).message).toMatch(/GEMINI_MODEL/)
+  })
+
+  it('reports it as configuration rather than an outage', async () => {
+    const app = appWith(async () => {
+      throw new AgentConfigError('Gemini rejected the model "x": gone.')
+    })
+
+    const response = await post(app, { instruction: 'cut it', clips })
+
+    expect(response.statusCode).toBe(503)
+    expect(response.json().error).toMatch(/rejected the model/)
   })
 })

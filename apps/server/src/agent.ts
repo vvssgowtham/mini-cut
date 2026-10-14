@@ -82,6 +82,31 @@ const EDIT_TOOL: Anthropic.Tool = {
   },
 }
 
+/**
+ * Something about the setup is wrong, rather than the service being down.
+ *
+ * Separate from a general failure because the remedy is completely different: "the editing service
+ * is unavailable" sends someone looking at their network and their code, when the answer is one
+ * wrong line in a file.
+ */
+export class AgentConfigError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AgentConfigError'
+  }
+}
+
+/** The provider refused the credentials. Never carries the key or the provider's raw response. */
+export class AgentAuthError extends AgentConfigError {
+  constructor(provider: string) {
+    super(
+      `${provider} rejected the API key. Check the value in apps/server/.env — an expired key, or ` +
+        `one for a different product, both look like this.`,
+    )
+    this.name = 'AgentAuthError'
+  }
+}
+
 export class AgentError extends Error {
   constructor(message: string) {
     super(message)
@@ -92,31 +117,44 @@ export class AgentError extends Error {
 /** The model call, injected so the route can be tested without a network or an API key. */
 export type EditPlanner = (request: AgentRequest) => Promise<unknown>
 
+/** The timeline, the measured silences and the instruction — identical whichever model reads it. */
+function promptFor(request: AgentRequest): string {
+  return [
+    `Timeline:\n${JSON.stringify(request.clips, null, 2)}`,
+    request.silences?.length ? `Silences:\n${JSON.stringify(request.silences, null, 2)}` : null,
+    `Instruction: ${request.instruction}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+/** 401 and 403 mean the credentials, whichever provider said so. */
+function isAuthStatus(status: unknown): boolean {
+  return status === 401 || status === 403
+}
+
 export function createAnthropicPlanner(apiKey: string): EditPlanner {
   const client = new Anthropic({ apiKey })
 
   return async (request) => {
-    const message = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      tools: [EDIT_TOOL],
-      tool_choice: { type: 'tool', name: EDIT_TOOL.name },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            `Timeline:\n${JSON.stringify(request.clips, null, 2)}`,
-            request.silences?.length
-              ? `Silences:\n${JSON.stringify(request.silences, null, 2)}`
-              : null,
-            `Instruction: ${request.instruction}`,
-          ]
-            .filter(Boolean)
-            .join('\n\n'),
-        },
-      ],
-    })
+    const message = await client.messages
+      .create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system: SYSTEM_PROMPT,
+        tools: [EDIT_TOOL],
+        tool_choice: { type: 'tool', name: EDIT_TOOL.name },
+        messages: [
+          {
+            role: 'user',
+            content: promptFor(request),
+          },
+        ],
+      })
+      .catch((error: unknown) => {
+        if (isAuthStatus((error as { status?: unknown }).status)) throw new AgentAuthError('Claude')
+        throw error
+      })
 
     const toolUse = message.content.find((block) => block.type === 'tool_use')
     if (!toolUse) throw new AgentError('the model did not return an edit')
@@ -175,4 +213,103 @@ export async function planEdit(planner: EditPlanner, request: AgentRequest): Pro
 
   validateAgainstTimeline(parsed.data.operations, request.clips)
   return parsed.data
+}
+
+/**
+ * The same job through Gemini.
+ *
+ * Here because the planner was already injected, so supporting a second provider is a second
+ * function rather than a second agent. Whatever either model returns is validated identically — the
+ * safety of this feature comes from the schema and the timeline checks, not from trusting a
+ * particular vendor.
+ *
+ * Plain fetch rather than another SDK: this is one request, and a megabyte of dependency to make it
+ * is a poor trade.
+ */
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.8-flash'
+
+/**
+ * Gemini accepts a subset of JSON Schema, and rejects a declaration containing keywords it does not
+ * know, so the tool is described separately rather than reusing the Anthropic one.
+ */
+const GEMINI_FUNCTION = {
+  name: 'submit_edit',
+  description: 'Submit the timeline operations that carry out the instruction.',
+  parameters: {
+    type: 'object',
+    properties: {
+      summary: {
+        type: 'string',
+        description: "One plain sentence describing the change, in the user's terms.",
+      },
+      operations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['trim', 'move', 'split', 'delete'] },
+            clipId: { type: 'string' },
+            sourceIn: { type: 'integer' },
+            sourceOut: { type: 'integer' },
+            start: { type: 'integer' },
+            atMs: { type: 'integer' },
+          },
+          required: ['type', 'clipId'],
+        },
+      },
+    },
+    required: ['summary', 'operations'],
+  },
+}
+
+type GeminiReply = {
+  candidates?: { content?: { parts?: { functionCall?: { args?: unknown } }[] } }[]
+  error?: { message?: string }
+}
+
+export function createGeminiPlanner(apiKey: string, model = GEMINI_MODEL): EditPlanner {
+  return async (request) => {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: 'POST',
+        // The key goes in a header rather than the query string, so it cannot end up in a proxy or
+        // server access log.
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: 'user', parts: [{ text: promptFor(request) }] }],
+          tools: [{ functionDeclarations: [GEMINI_FUNCTION] }],
+          // ANY forces a function call, so the model cannot answer in prose and leave nothing to parse.
+          toolConfig: {
+            functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [GEMINI_FUNCTION.name] },
+          },
+          generationConfig: { maxOutputTokens: MAX_TOKENS },
+        }),
+      },
+    )
+
+    const body = (await response.json()) as GeminiReply
+    // Gemini answers an invalid key with 400 and an explanatory message, not 401 — found by
+    // sending it a deliberately wrong key — so the message has to be read as well as the status.
+    const detail = body.error?.message ?? ''
+    if (isAuthStatus(response.status) || /api[ _-]?key/i.test(detail)) {
+      throw new AgentAuthError('Gemini')
+    }
+    // A retired model is configuration, and the provider's own message names the replacement — far
+    // more useful than anything this code could invent, so it is passed through rather than hidden
+    // behind "unavailable". Models are retired on Google's schedule, so this will recur.
+    if (response.status === 404 || /\bmodel\b/i.test(detail)) {
+      throw new AgentConfigError(
+        `Gemini rejected the model "${model}": ${detail} Set GEMINI_MODEL in apps/server/.env to override it.`,
+      )
+    }
+    if (!response.ok) {
+      throw new Error(`Gemini returned ${response.status}: ${detail || 'no detail'}`)
+    }
+
+    const call = body.candidates?.[0]?.content?.parts?.find((part) => part.functionCall)
+    if (!call?.functionCall?.args) throw new AgentError('the model did not return an edit')
+    return call.functionCall.args
+  }
 }
