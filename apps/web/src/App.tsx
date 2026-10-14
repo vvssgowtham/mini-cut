@@ -195,6 +195,8 @@ export default function App() {
         return
       }
 
+      // Delete and the editing keys live with the timeline's keyboard map, so there is one place
+      // that decides what a key means.
       if (event.key === ' ') {
         // Space is the universal play/pause in every editor. preventDefault stops it also
         // scrolling the page, and stops a focused button re-firing its own click.
@@ -202,18 +204,10 @@ export default function App() {
         void playback.toggle()
         return
       }
-
-      if ((event.key === 'Backspace' || event.key === 'Delete') && selectedClipId) {
-        const trackId = bus.project.tracks[0]?.id
-        if (!trackId) return
-        event.preventDefault()
-        bus.execute({ type: 'delete', trackId, clipId: selectedClipId })
-        setSelectedClipId(null)
-      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [bus, playback, selectedClipId])
+  }, [bus, playback])
 
   const handleImported = useCallback(
     async (opfsName: string) => {

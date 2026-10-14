@@ -167,8 +167,20 @@ export function Timeline({
     return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) }
   }
 
+  /**
+   * Editing shortcuts, bound to the window rather than to the canvas.
+   *
+   * They used to need the canvas focused, which meant they silently did nothing on page load, and
+   * stopped working the moment you clicked Play or Import — focus moved to that button and never
+   * came back. Nothing on screen said the canvas had to be clicked first. Editors bind these
+   * globally, so this does too.
+   */
   const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+    (event: KeyboardEvent) => {
+      // Never steal a key from a field someone is typing in.
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable]')) return
+
       const action = keyToAction(event)
       if (!action) return
       event.preventDefault()
@@ -198,6 +210,11 @@ export function Timeline({
     },
     [bus, onSelect, playhead],
   )
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLCanvasElement>) => {
@@ -322,7 +339,6 @@ export function Timeline({
         ref={canvasRef}
         tabIndex={0}
         role="application"
-        onKeyDown={handleKeyDown}
         aria-label={`Timeline, ${(project.tracks[0]?.clips ?? []).length} clips. Arrow keys select, alt and arrows nudge, bracket keys trim to the playhead, S splits, delete removes.`}
         style={{ width: '100%', height: heightPx, display: 'block', touchAction: 'none' }}
         onWheel={handleWheel}
