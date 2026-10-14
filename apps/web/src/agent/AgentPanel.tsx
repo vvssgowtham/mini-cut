@@ -78,7 +78,18 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
           silences: silencesFor(project, waveforms),
         }),
       })
-      const body = (await response.json()) as AgentResponse
+      // Parsed separately from the request: a proxy with nothing behind it answers with an HTML
+      // error page, and "unexpected token <" is not a useful thing to show someone.
+      let body: AgentResponse
+      try {
+        body = (await response.json()) as AgentResponse
+      } catch {
+        setState({
+          status: 'failed',
+          message: `The editing service answered ${response.status} but not with JSON. It is probably not running — "npm run dev" starts the API alongside the editor.`,
+        })
+        return
+      }
 
       if (!body.ok) {
         setState({ status: 'failed', message: body.error })
@@ -90,12 +101,15 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
       const commands = planToCommands(body.plan, project)
       setState({ status: 'proposed', plan: body.plan, affected: commands.length })
     } catch (error) {
+      // A rejected plan is the agent working and being refused. Anything else here is the request
+      // never completing, which almost always means the API is not running — so say that, rather
+      // than a sentence nobody can act on.
       setState({
         status: 'failed',
         message:
           error instanceof PlanRejectedError
             ? error.message
-            : 'could not reach the editing service',
+            : 'Could not reach the editing service at /api/agent. Is the API running? "npm run dev" starts it alongside the editor.',
       })
     }
   }
