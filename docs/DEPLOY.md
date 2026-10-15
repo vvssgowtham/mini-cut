@@ -7,15 +7,19 @@ Deploy the API first — the front end needs its URL.
 
 ## 1. The API
 
-`apps/server/Dockerfile` builds an image for Cloud Run, Fly, Render or any container host. It is
-built from the repository root, not from `apps/server`, because the install needs the workspace
-lockfile:
+`Dockerfile` at the repository root builds the API, for Cloud Run, Fly, Render or any container
+host. It sits at the root because the install needs the workspace lockfile, and because hosts
+default the build context to wherever the Dockerfile lives — one in `apps/server` would copy
+nothing and fail on its first line.
 
 ```bash
-docker build -f apps/server/Dockerfile -t mini-cut-api .
+docker build -t mini-cut-api .
 docker run -p 8080:8080 -e GROQ_API_KEY=gsk_... mini-cut-api
 curl localhost:8080/api/health     # {"status":"ok"}
 ```
+
+On Render: Runtime **Docker**, Dockerfile path `./Dockerfile`, and leave the build context at the
+repository root.
 
 ### Variables
 
