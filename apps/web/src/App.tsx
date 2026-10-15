@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentPanel } from './agent/AgentPanel'
 import { CommandBus } from './editor/history'
+import { insertAtCommands } from './editor/insertAt'
 import { clipEnd, type Project } from './editor/types'
 import { useProject } from './editor/useProject'
 import { PlaybackStore } from './media/playback'
@@ -25,7 +26,6 @@ import {
   saveProject,
 } from './storage/db'
 import { openOpfsAsUrl, revokeOpfsUrl } from './storage/opfs'
-import { timelineEnd } from './media/timelineMap'
 import type { Waveform } from './media/waveform'
 import { requestWaveform } from './media/waveformClient'
 import { RestoreError } from './storage/restore'
@@ -267,19 +267,20 @@ export default function App() {
       const track = current.tracks[0]
       if (!track) return
 
-      // Append after whatever is already there, as an insert rather than a replace: a second
-      // import adds to the cut instead of discarding the first one and its undo history.
-      const start = timelineEnd(track.clips)
-      const clip = {
-        id: crypto.randomUUID(),
-        sourceId: opfsName,
-        sourceIn: 0,
-        sourceOut: durationMs,
-        start,
-      }
+      // At the playhead, rippling the rest of the cut right: footage imported to fill a hole
+      // belongs in the hole, not at the far end of the timeline. Past the last clip this still
+      // appends, so a second import adds to the cut rather than opening a gap.
+      const { commands, clip } = insertAtCommands(
+        track,
+        { sourceId: opfsName, sourceIn: 0, sourceOut: durationMs },
+        playhead.ms,
+      )
 
-      bus.execute({ type: 'insert', trackId: track.id, index: track.clips.length, clip })
-      playhead.set(start)
+      // One group, so undoing an import takes the split and the shuffle back with it.
+      bus.executeGroup(commands)
+      // Past the new clip rather than onto it, so importing twice running lays the second after
+      // the first instead of in front of it.
+      playhead.set(clipEnd(clip))
       setSelectedClipId(clip.id)
       void requestPersistentStorage()
     },
