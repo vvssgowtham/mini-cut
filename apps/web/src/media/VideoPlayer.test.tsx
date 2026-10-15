@@ -376,3 +376,43 @@ describe('reaching the end of a source file', () => {
     expect(playback.isPlaying).toBe(false)
   })
 })
+
+describe('ending a file that also reports a pause', () => {
+  /** What browsers actually do: `pause` then `ended`, so the store says "not playing" first. */
+  const firstWhole: Clip = { id: 'a', sourceId: 'one.mp4', sourceIn: 0, sourceOut: 3000, start: 0 }
+  const secondWhole: Clip = {
+    id: 'b',
+    sourceId: 'two.mp4',
+    sourceIn: 0,
+    sourceOut: 2000,
+    start: 3000,
+  }
+
+  it('still resumes the next file', () => {
+    const playhead = new PlayheadStore()
+    const playback = new PlaybackStore()
+    render(
+      <VideoPlayer
+        clips={[firstWhole, secondWhole]}
+        sources={sources}
+        playhead={playhead}
+        playback={playback}
+      />,
+    )
+    const video = document.querySelector('video')
+    if (!video) throw new Error('no video element rendered')
+    playback.reportPlaying(true)
+
+    // The pause arrives first, which is what made the next clip load and then sit there.
+    act(() => fireEvent.pause(video))
+    expect(playback.isPlaying).toBe(false)
+
+    act(() => fireEvent.ended(video))
+    expect(video.getAttribute('src')).toBe('blob:two')
+
+    play.mockClear()
+    act(() => fireEvent.loadedMetadata(video))
+
+    expect(play).toHaveBeenCalled()
+  })
+})

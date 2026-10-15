@@ -67,14 +67,22 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
   }, [clips])
 
   /** Put the element on whatever clip covers `timelineMs`, loading another file if needed. */
+  /**
+   * `resume` says whether to carry on playing after a source swap.
+   *
+   * It is a parameter rather than a reading of `playback.isPlaying`, because the one caller that
+   * most needs to resume is the one that cannot trust that flag: a video reaching its end fires
+   * `pause` as well as `ended`, so by the time the handler runs the store already says "not
+   * playing" and the next clip would load and sit there.
+   */
   const seekTo = useCallback(
-    (timelineMs: Ms) => {
+    (timelineMs: Ms, resume: boolean = playback.isPlaying) => {
       const position = playbackPositionAt(clipsRef.current, timelineMs)
       if (!position) return
 
       if (position.clip.sourceId !== activeSourceId) {
         // The element reloads on the new src; loadedmetadata lands it on the right frame.
-        resumeAfterSwapRef.current = playback.isPlaying
+        resumeAfterSwapRef.current = resume
         setRequestedSourceId(position.clip.sourceId)
         return
       }
@@ -105,7 +113,7 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
         }
         lastPushedRef.current = -1
         playhead.set(next.timelineMs)
-        seekTo(next.timelineMs)
+        seekTo(next.timelineMs, true)
         return
       }
 
@@ -121,7 +129,7 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
         }
         lastPushedRef.current = -1
         playhead.set(next.timelineMs)
-        seekTo(next.timelineMs)
+        seekTo(next.timelineMs, true)
         return
       }
 
@@ -202,7 +210,9 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
 
     lastPushedRef.current = -1
     playhead.set(next.timelineMs)
-    seekTo(next.timelineMs)
+    // Always resuming: `ended` only fires because something was playing, whatever the store says
+    // about it by now.
+    seekTo(next.timelineMs, true)
 
     // A different file resumes once its metadata arrives; the same file has nothing to wait for,
     // because `ended` leaves the element paused either way.
