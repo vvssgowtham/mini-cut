@@ -23,12 +23,12 @@ repository root.
 
 ### Variables
 
-| Variable                                                | Needed                                     | Purpose                                                                                           |
-| ------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` / `GROQ_API_KEY` | one of them                                | The agent, tried in that order                                                                    |
-| `ALLOWED_ORIGIN`                                        | yes, when the front end is on another host | The exact front-end origin, e.g. `https://mini-cut.vercel.app`. Comma-separated for more than one |
-| `GEMINI_MODEL` / `GROQ_MODEL`                           | no                                         | Override a model that has been retired or is busy                                                 |
-| `PORT`                                                  | no                                         | Supplied by most hosts; defaults to 3001                                                          |
+| Variable                                                | Needed                                     | Purpose                                                                                                                                            |
+| ------------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` / `GROQ_API_KEY` | one of them                                | The agent, tried in that order                                                                                                                     |
+| `ALLOWED_ORIGIN`                                        | yes, when the front end is on another host | Every front-end origin, exactly as the browser sends it, comma-separated: `https://minicardboard.vvssgowtham.in,https://mini-cut-theta.vercel.app` |
+| `GEMINI_MODEL` / `GROQ_MODEL`                           | no                                         | Override a model that has been retired or is busy                                                                                                  |
+| `PORT`                                                  | no                                         | Supplied by most hosts; defaults to 3001                                                                                                           |
 
 Without any key the app still runs and the agent returns 503 saying it is not configured, rather
 than pretending to work. Without `ALLOWED_ORIGIN`, CORS is not registered at all — correct for a
@@ -109,3 +109,17 @@ watch. If the demo link matters, it is the better answer than keeping a sleepy i
 If the agent says it cannot reach the editing service, the usual cause is `VITE_API_BASE_URL`
 missing at build time, or `ALLOWED_ORIGIN` not matching the front end's origin exactly — scheme and
 all.
+
+A custom domain is a second origin, not a rename: adding one in Vercel does not retire the
+`*.vercel.app` one, and the API will keep refusing the new name until it is in `ALLOWED_ORIGIN`
+too. The symptom is narrow — the editor loads, imports, plays and exports, and only the agent
+fails — because CORS is the one thing in this app that needs the server's permission. Check it
+without a browser:
+
+```bash
+curl -si -X OPTIONS https://<api-host>/api/agent \
+  -H 'Origin: https://<front-end-origin>' \
+  -H 'Access-Control-Request-Method: POST' | grep -i access-control-allow-origin
+```
+
+No header back means the origin is not on the list.
