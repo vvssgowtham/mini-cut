@@ -21,7 +21,23 @@ import { PlanRejectedError, applyPlan, planToCommands } from './applyPlan'
  * forwards `/api` to the server. Set `VITE_API_BASE_URL` when the front end and the API are on
  * different hosts, which is the normal shape for a static site plus a container.
  */
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL)
+
+/**
+ * Accept the sensible variations on an API origin.
+ *
+ * The value wanted is the origin alone, because `/api/agent` is appended to it. The obvious thing
+ * to paste is whatever URL was last confirmed working — usually the health endpoint — which would
+ * silently build `…/api/health/api/agent`. Since it is set once at build time and only shows up as
+ * a failed request much later, it is worth being forgiving here rather than correct and brittle.
+ */
+export function normalizeApiBase(value: string | undefined): string {
+  if (!value) return ''
+  return value
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/api(\/.*)?$/, '')
+}
 
 export type AgentPanelProps = {
   bus: CommandBus
