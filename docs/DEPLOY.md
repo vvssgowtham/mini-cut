@@ -32,9 +32,20 @@ single-origin deployment, and the reason a split deployment must set it.
 
 ## 2. The front end
 
-`vercel.json` at the repository root is ready: it builds the whole workspace, publishes
-`apps/web/dist`, and sets the two headers below. Import the repository on Vercel and accept the
-detected settings.
+Vercel detects both workspaces and offers to group them as **Services**. Do not take that offer:
+the API is a long-running server that calls `listen()`, and Vercel would run it as a function. Use
+**Import single project** on `web` alone, and deploy the API as a container (step 1).
+
+Either root works — there is a `vercel.json` for each, so the headers are set whichever Vercel
+picks:
+
+| Root Directory | Config used            | Notes                                             |
+| -------------- | ---------------------- | ------------------------------------------------- |
+| `apps/web`     | `apps/web/vercel.json` | What "Import single project" on `web` gives you   |
+| `./`           | `vercel.json`          | Set the Application Preset to Other, not Services |
+
+Both install and build from the repository root, because the web app depends on the `shared`
+workspace and a build confined to `apps/web` cannot resolve it.
 
 Set one build-time variable:
 
