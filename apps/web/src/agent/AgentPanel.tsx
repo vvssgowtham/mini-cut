@@ -31,9 +31,18 @@ export type AgentPanelProps = {
   disabled?: boolean
 }
 
+/**
+ * How long to wait before explaining the delay.
+ *
+ * A warm service answers in a second or two. A free-tier container that has gone to sleep takes the
+ * better part of a minute to wake, and "Thinking" for fifty seconds reads as broken rather than
+ * slow — so past this the panel says what is actually happening.
+ */
+const SLOW_REQUEST_MS = 4000
+
 type State =
   | { status: 'idle' }
-  | { status: 'thinking' }
+  | { status: 'thinking'; slow: boolean }
   | { status: 'proposed'; plan: AgentPlan; affected: number }
   | { status: 'failed'; message: string }
 
@@ -76,7 +85,13 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
   const [state, setState] = useState<State>({ status: 'idle' })
 
   const ask = async () => {
-    setState({ status: 'thinking' })
+    setState({ status: 'thinking', slow: false })
+    const slowTimer = setTimeout(() => {
+      setState((current) =>
+        current.status === 'thinking' ? { status: 'thinking', slow: true } : current,
+      )
+    }, SLOW_REQUEST_MS)
+
     try {
       const response = await fetch(`${API_BASE}/api/agent`, {
         method: 'POST',
@@ -120,6 +135,8 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
             ? error.message
             : `Could not reach the editing service at ${API_BASE || ''}/api/agent. Is the API running? "npm run dev" starts it alongside the editor.`,
       })
+    } finally {
+      clearTimeout(slowTimer)
     }
   }
 
@@ -177,6 +194,13 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
             Discard
           </button>
         </div>
+      )}
+
+      {state.status === 'thinking' && state.slow && (
+        <p className="hint" role="status">
+          Still waiting. A free-tier service sleeps when idle and can take up to a minute to wake —
+          the next request will be quick.
+        </p>
       )}
 
       {state.status === 'failed' && (
