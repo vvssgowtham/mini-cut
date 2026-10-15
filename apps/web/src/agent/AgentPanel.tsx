@@ -14,6 +14,15 @@ import type { CommandBus } from '../editor/history'
 import type { Project } from '../editor/types'
 import { PlanRejectedError, applyPlan, planToCommands } from './applyPlan'
 
+/**
+ * Where the API lives.
+ *
+ * Empty in development and for a single-origin deployment, where the dev proxy or a host rewrite
+ * forwards `/api` to the server. Set `VITE_API_BASE_URL` when the front end and the API are on
+ * different hosts, which is the normal shape for a static site plus a container.
+ */
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+
 export type AgentPanelProps = {
   bus: CommandBus
   project: Project
@@ -69,7 +78,7 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
   const ask = async () => {
     setState({ status: 'thinking' })
     try {
-      const response = await fetch('/api/agent', {
+      const response = await fetch(`${API_BASE}/api/agent`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +118,7 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
         message:
           error instanceof PlanRejectedError
             ? error.message
-            : 'Could not reach the editing service at /api/agent. Is the API running? "npm run dev" starts it alongside the editor.',
+            : `Could not reach the editing service at ${API_BASE || ''}/api/agent. Is the API running? "npm run dev" starts it alongside the editor.`,
       })
     }
   }

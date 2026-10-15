@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@fastify/cors": "^11.3.1",
     "@mini-cut/shared": "*",
     "fastify": "^5.12.5"
   },
