@@ -1,0 +1,26 @@
+# Everything here is uploaded to the builder before the first line of the Dockerfile runs, so this
+# is about upload time as much as image size. node_modules alone is 270MB and is reinstalled inside
+# the image anyway, from the lockfile, which is the only copy that can be trusted to match.
+node_modules
+**/node_modules
+
+# Build output, rebuilt in the image.
+dist
+**/dist
+apps/web/dev-dist
+
+# Never belongs in an image.
+.env
+**/.env
+.env.*
+!**/.env.example
+
+# Nothing the server needs at runtime.
+.git
+.github
+.claude
+.agents
+docs
+*.md
+!README.md
+coverage

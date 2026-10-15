@@ -1,3 +1,8 @@
+# Builds the API. At the repository root on purpose: every path below is relative to the build
+# context, and hosts default that context to the directory holding the Dockerfile. Kept in
+# apps/server, the default build copied nothing and failed on the first COPY — and remembering to
+# override the context per host is a step that only announces itself by breaking.
+#
 # The server is small: one route that calls an LLM. The image is mostly node_modules, so the
 # install layer is kept separate from the source to stay cacheable across code changes.
 FROM node:22-slim AS deps
