@@ -245,3 +245,134 @@ describe('when a clip has no media loaded', () => {
     expect(document.body.textContent).toMatch(/media could not be opened/i)
   })
 })
+
+describe('a split clip followed by a second import', () => {
+  /** Exactly the reported case: a three minute video cut at ten seconds, then another appended. */
+  const splitA: Clip = { id: 'a', sourceId: 'one.mp4', sourceIn: 0, sourceOut: 10_000, start: 0 }
+  const splitB: Clip = {
+    id: 'b',
+    sourceId: 'one.mp4',
+    sourceIn: 10_000,
+    sourceOut: 180_000,
+    start: 10_000,
+  }
+  const appended: Clip = {
+    id: 'c',
+    sourceId: 'two.mp4',
+    sourceIn: 0,
+    sourceOut: 20_000,
+    start: 180_000,
+  }
+
+  function setupThree(startMs = 0) {
+    const playhead = new PlayheadStore(startMs)
+    const playback = new PlaybackStore()
+    render(
+      <VideoPlayer
+        clips={[splitA, splitB, appended]}
+        sources={sources}
+        playhead={playhead}
+        playback={playback}
+      />,
+    )
+    const video = document.querySelector('video')
+    if (!video) throw new Error('no video element rendered')
+    playback.reportPlaying(true)
+    return { playhead, playback, video }
+  }
+
+  function at(video: HTMLVideoElement, seconds: number) {
+    Object.defineProperty(video, 'currentTime', {
+      value: seconds,
+      writable: true,
+      configurable: true,
+    })
+    fireEvent.timeUpdate(video)
+  }
+
+  it('crosses the split without changing file or stopping', () => {
+    const { playhead, playback, video } = setupThree()
+
+    act(() => at(video, 10.0))
+
+    // Same source either side of a split, so nothing should swap.
+    expect(video.getAttribute('src')).toBe('blob:one')
+    expect(playhead.ms).toBe(10_000)
+    expect(playback.isPlaying).toBe(true)
+  })
+
+  it('keeps advancing through the second half of the split', () => {
+    const { playhead, video } = setupThree(10_000)
+
+    act(() => at(video, 25.0))
+
+    expect(playhead.ms).toBe(25_000)
+  })
+
+  it('moves to the appended video at the end of the split clip', () => {
+    const { playhead, video } = setupThree(10_000)
+
+    act(() => at(video, 180.0))
+
+    expect(video.getAttribute('src')).toBe('blob:two')
+    act(() => fireEvent.loadedMetadata(video))
+    expect(playhead.ms).toBe(180_000)
+  })
+})
+
+describe('reaching the end of a source file', () => {
+  /** Two files, each played to its own end — the shape a plain import gives you. */
+  const firstWhole: Clip = { id: 'a', sourceId: 'one.mp4', sourceIn: 0, sourceOut: 3000, start: 0 }
+  const secondWhole: Clip = {
+    id: 'b',
+    sourceId: 'two.mp4',
+    sourceIn: 0,
+    sourceOut: 2000,
+    start: 3000,
+  }
+
+  function setup(clips: Clip[], startMs = 0) {
+    const playhead = new PlayheadStore(startMs)
+    const playback = new PlaybackStore()
+    render(<VideoPlayer clips={clips} sources={sources} playhead={playhead} playback={playback} />)
+    const video = document.querySelector('video')
+    if (!video) throw new Error('no video element rendered')
+    playback.reportPlaying(true)
+    return { playhead, playback, video }
+  }
+
+  it('moves to the next clip when the file ends rather than stopping', () => {
+    // The frame callback that normally drives a crossing stops firing once the element ends, so
+    // this event is the only thing left to continue from.
+    const { playhead, video } = setup([firstWhole, secondWhole])
+
+    act(() => fireEvent.ended(video))
+
+    expect(video.getAttribute('src')).toBe('blob:two')
+    act(() => fireEvent.loadedMetadata(video))
+    expect(playhead.ms).toBe(3000)
+  })
+
+  it('resumes playing the next file', () => {
+    const { playback, video } = setup([firstWhole, secondWhole])
+
+    act(() => fireEvent.ended(video))
+    play.mockClear()
+    act(() => fireEvent.loadedMetadata(video))
+
+    expect(play).toHaveBeenCalled()
+
+    // play() is mocked, so nothing fires the element's own event. The store moves only on that
+    // event by design, so the browser's half of the exchange has to be simulated here.
+    act(() => fireEvent.play(video))
+    expect(playback.isPlaying).toBe(true)
+  })
+
+  it('stops for real at the end of the last clip', () => {
+    const { playback, video } = setup([firstWhole], 0)
+
+    act(() => fireEvent.ended(video))
+
+    expect(playback.isPlaying).toBe(false)
+  })
+})

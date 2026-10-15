@@ -183,6 +183,32 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
     }
   }
 
+  /**
+   * The element reaching the end of its own file is not the cut ending.
+   *
+   * A clip's out point very often sits at the end of its source — the last clip of a split, or an
+   * untrimmed import — and at that moment the browser stops presenting frames, so the frame
+   * callback that normally drives the crossing never fires again. Playback simply stopped at the
+   * join. Continuing has to be driven from this event instead.
+   */
+  const handleEnded = () => {
+    const current = clipAt(clipsRef.current, playhead.ms)
+    const next = current ? playbackPositionAt(clipsRef.current, clipEnd(current)) : null
+
+    if (!next) {
+      playback.reportPlaying(false)
+      return
+    }
+
+    lastPushedRef.current = -1
+    playhead.set(next.timelineMs)
+    seekTo(next.timelineMs)
+
+    // A different file resumes once its metadata arrives; the same file has nothing to wait for,
+    // because `ended` leaves the element paused either way.
+    if (next.clip.sourceId === activeSourceId) void playback.play()
+  }
+
   const handleTimeUpdate = () => {
     const video = videoRef.current
     if (!video || typeof video.requestVideoFrameCallback === 'function') return
@@ -213,7 +239,7 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
       onTimeUpdate={handleTimeUpdate}
       onPlay={() => playback.reportPlaying(true)}
       onPause={() => playback.reportPlaying(false)}
-      onEnded={() => playback.reportPlaying(false)}
+      onEnded={handleEnded}
       onClick={() => void playback.toggle()}
     />
   )

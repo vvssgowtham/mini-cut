@@ -126,7 +126,12 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
       } catch {
         setState({
           status: 'failed',
-          message: `The editing service answered ${response.status} but not with JSON. It is probably not running — "npm run dev" starts the API alongside the editor.`,
+          // A 404 from the page's own origin almost always means the API address was never set
+          // at build time, so the request went to the static host. Saying "run npm run dev" sends
+          // someone to fix a local server that is not the problem.
+          message: API_BASE
+            ? `The editing service at ${API_BASE} answered ${response.status} but not with JSON.`
+            : `The editing service answered ${response.status} but not with JSON. If this is a deployed build, VITE_API_BASE_URL was not set when it was built, so the request went to this site instead of the API. Locally, "npm run dev" starts the API alongside the editor.`,
         })
         return
       }
