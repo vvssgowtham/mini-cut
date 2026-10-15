@@ -1,4 +1,5 @@
 import Fastify from 'fastify'
+import cors from '@fastify/cors'
 import { agentRequestSchema, type AgentResponse, type HealthResponse } from '@mini-cut/shared'
 import {
   AgentBusyError,
@@ -49,6 +50,16 @@ export function buildApp(options: AppOptions = {}) {
   })
 
   const planner = options.planner ?? plannerFromEnv()
+
+  /**
+   * Only needed when the front end is served from another host, which is the usual shape for a
+   * static site plus a container. Left off entirely when ALLOWED_ORIGIN is unset, so a
+   * single-origin deployment does not quietly accept requests from anywhere.
+   */
+  const allowedOrigin = process.env.ALLOWED_ORIGIN
+  if (allowedOrigin) {
+    void app.register(cors, { origin: allowedOrigin.split(',').map((value) => value.trim()) })
+  }
 
   app.get('/api/health', async (): Promise<HealthResponse> => ({ status: 'ok' }))
 

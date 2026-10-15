@@ -515,3 +515,40 @@ describe('Groq', () => {
     expect((failure as Error).message).toMatch(/GROQ_MODEL/)
   })
 })
+
+describe('cross-origin access', () => {
+  const origin = 'https://mini-cut.example'
+
+  async function headersFor(allowed: string | undefined) {
+    const previous = process.env.ALLOWED_ORIGIN
+    if (allowed === undefined) delete process.env.ALLOWED_ORIGIN
+    else process.env.ALLOWED_ORIGIN = allowed
+
+    const app = buildApp({ planner: async () => validPlan })
+    const response = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/agent',
+      headers: { origin, 'access-control-request-method': 'POST' },
+    })
+    await app.close()
+
+    if (previous === undefined) delete process.env.ALLOWED_ORIGIN
+    else process.env.ALLOWED_ORIGIN = previous
+    return response.headers
+  }
+
+  it('allows the deployed front end when one is configured', async () => {
+    expect((await headersFor(origin))['access-control-allow-origin']).toBe(origin)
+  })
+
+  it('stays closed when no origin is configured', async () => {
+    // A single-origin deployment needs no CORS, and should not accept requests from anywhere.
+    expect((await headersFor(undefined))['access-control-allow-origin']).toBeUndefined()
+  })
+
+  it('refuses an origin that is not the configured one', async () => {
+    const headers = await headersFor('https://somewhere-else.example')
+
+    expect(headers['access-control-allow-origin']).not.toBe(origin)
+  })
+})

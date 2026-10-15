@@ -11,6 +11,8 @@ npm install
 npm run dev     # web on :5173, API on :3001
 ```
 
+Deploying both halves: [docs/DEPLOY.md](docs/DEPLOY.md).
+
 Export needs a cross-origin isolated page; the agent needs `ANTHROPIC_API_KEY` (see
 [docs/DEPLOY.md](docs/DEPLOY.md)). Without the key everything else still works and the agent says it
 is not configured.
