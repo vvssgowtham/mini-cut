@@ -7,15 +7,19 @@ Deploy the API first — the front end needs its URL.
 
 ## 1. The API
 
-`apps/server/Dockerfile` builds an image for Cloud Run, Fly, Render or any container host. It is
-built from the repository root, not from `apps/server`, because the install needs the workspace
-lockfile:
+`Dockerfile` at the repository root builds the API, for Cloud Run, Fly, Render or any container
+host. It sits at the root because the install needs the workspace lockfile, and because hosts
+default the build context to wherever the Dockerfile lives — one in `apps/server` would copy
+nothing and fail on its first line.
 
 ```bash
-docker build -f apps/server/Dockerfile -t mini-cut-api .
+docker build -t mini-cut-api .
 docker run -p 8080:8080 -e GROQ_API_KEY=gsk_... mini-cut-api
 curl localhost:8080/api/health     # {"status":"ok"}
 ```
+
+On Render: Runtime **Docker**, Dockerfile path `./Dockerfile`, and leave the build context at the
+repository root.
 
 ### Variables
 
@@ -74,6 +78,27 @@ curl -sI https://<your-host>/ | grep -i cross-origin
 One wrinkle: a navigation served from the service worker cache carries the headers it was precached
 with, so after a hosting change an offline load and an online load can disagree about whether export
 works. Check both.
+
+## Cold starts on a free tier
+
+A free container sleeps after a quarter of an hour idle and takes the better part of a minute to
+wake. For a link someone clicks once, that first minute is the whole impression — so the agent panel
+says what is happening after four seconds rather than sitting on "Thinking".
+
+To avoid it entirely, keep the service warm by pinging `/api/health` every ten minutes or so. It
+returns a fixed object, touches no model and spends no tokens, which is exactly what makes it the
+right target:
+
+- **cron-job.org** — free, intervals down to a minute, no card.
+- **UptimeRobot** — free, five-minute intervals, and tells you when the service is down.
+- **Better Stack** — same idea, nicer reports.
+
+Worth knowing before relying on it: a free Render instance has a monthly hour budget, and staying
+awake all month uses nearly all of it. One service fits; two do not.
+
+The alternative is a host that does not have this problem. Cloud Run scales to zero and cold-starts
+in a second or two rather than a minute, and its free tier is generous — no pinging, no budget to
+watch. If the demo link matters, it is the better answer than keeping a sleepy instance awake.
 
 ## 3. Afterwards
 
