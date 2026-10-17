@@ -4,6 +4,11 @@ A video editor that runs entirely in the browser. Import a multi-gigabyte file, 
 timeline, ask an AI agent to make edits in plain language, and export — with nothing uploaded
 anywhere and the whole thing still working offline.
 
+**Live: [minicardboard.vvssgowtham.in](https://minicardboard.vvssgowtham.in/)** — bring a video
+file; there is nothing to sign up for. The agent runs on a free container that sleeps, so the first
+instruction after a quiet spell takes about a minute to answer while it wakes. Everything else is
+local to the browser and immediate.
+
 <!-- Add after recording: a 60–90s clip of import → trim → agent edit → refresh → export. -->
 
 ```bash
@@ -128,7 +133,7 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 The split that made the browser work testable: anything with a decision in it is a pure function —
 viewport maths, hit-testing, keyboard mapping, export planning, silence detection — and the parts
-that need a browser are thin wrappers around them. 403 tests run in Node with no browser.
+that need a browser are thin wrappers around them. 529 tests run in Node with no browser.
 
 ## What a green test suite did not catch
 
@@ -152,8 +157,10 @@ Working: import, multi-clip timeline, trim, move, split, join, delete, undo/redo
 keyboard navigation, playback across clips, waveforms, silence detection, autosave, offline, export,
 and the agent.
 
-Not done: thumbnails, multiple tracks, snapping to clip edges, and ripple edit. Playback across two
-different files will hitch, because nothing preloads the next source yet.
+Not done: thumbnails, multiple tracks, and snapping to clip edges. Import ripples — footage lands
+at the playhead and pushes the rest of the cut right — but deleting a clip still leaves its gap
+behind. Playback across two different files will hitch, because nothing preloads the next source
+yet.
 
 ## Scripts
 
