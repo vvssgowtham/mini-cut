@@ -15,6 +15,7 @@ import { closeGapAvailability, joinAvailability, splitAvailability } from '../ed
 import type { CommandBus } from '../editor/history'
 import type { Project } from '../editor/types'
 import type { PlayheadStore } from '../media/playhead'
+import { Icon } from './Icons'
 
 export type ClipActionsProps = {
   bus: CommandBus
@@ -57,6 +58,7 @@ export function ClipActions({
         disabled={disabled || !canSplit}
         title={split.available ? 'Split at the playhead (S)' : split.reason}
       >
+        <Icon name="scissors" />
         Split
       </button>
 
@@ -70,6 +72,7 @@ export function ClipActions({
         disabled={disabled || !join.available}
         title={join.available ? 'Put the two halves of a split back together (J)' : join.reason}
       >
+        <Icon name="link" />
         Rejoin
       </button>
 
@@ -87,6 +90,7 @@ export function ClipActions({
             : closeGap.reason
         }
       >
+        <Icon name="brackets" />
         Close gap
       </button>
 
@@ -101,6 +105,7 @@ export function ClipActions({
         disabled={disabled || !selectedClipId}
         title={selectedClipId ? 'Delete the selected clip' : 'Select a clip to delete.'}
       >
+        <Icon name="trash" />
         Delete
       </button>
     </>

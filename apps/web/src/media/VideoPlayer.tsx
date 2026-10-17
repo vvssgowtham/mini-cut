@@ -16,7 +16,7 @@
  * each other.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { clipEnd, type Clip, type Ms } from '../editor/types'
 import type { PlaybackStore } from './playback'
 import type { PlayheadStore } from './playhead'
@@ -32,9 +32,11 @@ export type VideoPlayerProps = {
   sources: ReadonlyMap<string, string>
   playhead: PlayheadStore
   playback: PlaybackStore
+  /** Shown instead of the bare prompt when there are no clips at all. */
+  empty?: ReactNode
 }
 
-export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerProps) {
+export function VideoPlayer({ clips, sources, playhead, playback, empty }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastPushedRef = useRef<Ms>(-1)
   const clipsRef = useRef(clips)
@@ -224,6 +226,8 @@ export function VideoPlayer({ clips, sources, playhead, playback }: VideoPlayerP
     if (!video || typeof video.requestVideoFrameCallback === 'function') return
     advance(secondsToMs(video.currentTime))
   }
+
+  if (!src && clips.length === 0 && empty) return <>{empty}</>
 
   if (!src) {
     // Two different situations, and conflating them is how a clip with missing media came to look
