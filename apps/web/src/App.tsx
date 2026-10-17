@@ -31,7 +31,9 @@ import { requestWaveform } from './media/waveformClient'
 import { RestoreError } from './storage/restore'
 import { Timeline, type ViewControls } from './timeline/Timeline'
 import { ClipActions } from './ui/ClipActions'
+import { EmptyState } from './ui/EmptyState'
 import { ExportButton } from './ui/ExportButton'
+import { Icon } from './ui/Icons'
 import { ImportButton } from './ui/ImportButton'
 import { Timecode } from './ui/Timecode'
 import { Transport } from './ui/Transport'
@@ -291,10 +293,22 @@ export default function App() {
   const cutDurationMs = clips.reduce((sum, clip) => sum + (clip.sourceOut - clip.sourceIn), 0)
   const timelineEndMs = clips.reduce((end, clip) => Math.max(end, clipEnd(clip)), 0)
 
+  // One import control, wherever it is shown: the empty viewer owns it until there is a clip, then
+  // it moves to the toolbar. Two live inputs would be two independent copy states.
+  const importControl = (variant: 'hero' | 'toolbar') => (
+    <ImportButton
+      onImported={handleImported}
+      disabled={restoreState !== 'ready'}
+      variant={variant}
+    />
+  )
+
   return (
     <div className="app">
       <header className="zone masthead">
-        <h1 className="wordmark">Mini Cut</h1>
+        <h1 className="wordmark">
+          <span>Mini</span> Cut
+        </h1>
         <Timecode playhead={playhead} idle={clips.length === 0} />
         <span className="state" data-tone={saveState === 'error' ? 'error' : undefined}>
           {restoreState === 'restoring' && 'Opening your last project'}
@@ -308,7 +322,13 @@ export default function App() {
       </header>
 
       <section className="zone viewer">
-        <VideoPlayer clips={clips} sources={sources} playhead={playhead} playback={playback} />
+        <VideoPlayer
+          clips={clips}
+          sources={sources}
+          playhead={playhead}
+          playback={playback}
+          empty={<EmptyState>{importControl('hero')}</EmptyState>}
+        />
       </section>
 
       <section className="zone timeline" aria-label="Timeline">
@@ -354,6 +374,7 @@ export default function App() {
             onClick={() => bus.undo()}
             disabled={!bus.canUndo || restoreState !== 'ready'}
           >
+            <Icon name="undo" />
             Undo
           </button>
           <button
@@ -361,6 +382,7 @@ export default function App() {
             onClick={() => bus.redo()}
             disabled={!bus.canRedo || restoreState !== 'ready'}
           >
+            <Icon name="redo" />
             Redo
           </button>
           <ClipActions
@@ -371,17 +393,18 @@ export default function App() {
             onSelect={setSelectedClipId}
             disabled={restoreState !== 'ready'}
           />
+        </div>
 
-          <span className="divider" aria-hidden="true" />
-
+        <div className="transport">
           <div className="transport-group" role="group" aria-label="Zoom">
             <button
               type="button"
               onClick={() => viewControlsRef.current?.zoomOut()}
               disabled={clips.length === 0}
               title="Zoom out"
+              aria-label="Zoom out"
             >
-              &minus;
+              <Icon name="minus" />
             </button>
             <button
               type="button"
@@ -396,14 +419,15 @@ export default function App() {
               onClick={() => viewControlsRef.current?.zoomIn()}
               disabled={clips.length === 0}
               title="Zoom in"
+              aria-label="Zoom in"
             >
-              +
+              <Icon name="plus" />
             </button>
           </div>
 
           <span className="divider" aria-hidden="true" />
 
-          <ImportButton onImported={handleImported} disabled={restoreState !== 'ready'} />
+          {clips.length > 0 && importControl('toolbar')}
           <ExportButton
             project={project}
             disabled={clips.length === 0 || restoreState !== 'ready'}
@@ -419,12 +443,15 @@ export default function App() {
           </span>
         </div>
 
-        <p className="hint">
-          Drag a clip to move it, or its edges to trim. Drag the playhead or the ruler to scrub.
-          Scroll to pan, hold ctrl or cmd and scroll to zoom. Left and right arrows step exactly one
-          frame, which is how to land a split precisely; S splits the selected clip at the playhead,
-          J rejoins two halves of a split, and space plays.
-        </p>
+        <details className="tips">
+          <summary>Tips and shortcuts</summary>
+          <p>
+            Drag a clip to move it, or its edges to trim. Drag the playhead or the ruler to scrub.
+            Scroll to pan, hold ctrl or cmd and scroll to zoom. Left and right arrows step exactly
+            one frame, which is how to land a split precisely; S splits the selected clip at the
+            playhead, J rejoins two halves of a split, and space plays.
+          </p>
+        </details>
       </footer>
     </div>
   )

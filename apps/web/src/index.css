@@ -114,7 +114,7 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  max-width: 1120px;
+  max-width: 1200px;
   margin: var(--space-xl) auto;
   background: var(--canvas);
   border-radius: var(--radius-lg);
@@ -143,17 +143,22 @@ body {
 
 .wordmark {
   margin: 0;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 700;
-  letter-spacing: -0.44px;
+  letter-spacing: -0.6px;
+  color: var(--ink);
+}
+
+/* Half the name carries the brand colour, so the mark reads as two words, not one red block. */
+.wordmark span {
   color: var(--rausch);
 }
 
 /* The instrument reading. Tabular figures so it does not jitter as it runs. */
 .timecode {
   font-family: var(--mono);
-  font-size: clamp(24px, 5vw, 32px);
-  font-weight: 500;
+  font-size: clamp(28px, 5vw, 40px);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.5px;
   text-align: center;
@@ -229,6 +234,45 @@ body {
   margin: 0;
 }
 
+/* The invitation shown before anything is imported. */
+.viewer-drop {
+  inline-size: calc(100% - 2 * var(--space-lg));
+  margin: var(--space-lg);
+  padding: var(--space-xl) var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-xs);
+  border: 1.5px dashed #ffb3c1;
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+}
+
+.drop-icon {
+  display: grid;
+  place-items: center;
+  inline-size: 64px;
+  block-size: 64px;
+  margin-bottom: var(--space-sm);
+  border-radius: var(--radius-full);
+  background: #ffe3e8;
+  color: var(--rausch);
+}
+
+.viewer-drop h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--ink);
+}
+
+.viewer-drop p {
+  margin: 0 0 var(--space-base);
+  color: var(--muted);
+}
+
 /* Timeline ---------------------------------------------------------------- */
 
 .timeline {
@@ -259,9 +303,20 @@ body {
   flex-wrap: wrap;
 }
 
+/* Play stands apart from the stepping controls, which read as one instrument below it. */
+.transport-set {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
 /* Stepping controls read as one instrument: a single outline, hairlines between. */
 .transport-group {
   display: flex;
+}
+
+.icon {
+  flex: none;
 }
 
 .transport-group button {
@@ -286,6 +341,9 @@ body {
 }
 
 button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
   font: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -293,7 +351,7 @@ button {
   background: var(--canvas);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  padding: 10px 16px;
+  padding: 10px 14px;
   cursor: pointer;
   transition:
     background-color 120ms ease,
@@ -312,19 +370,19 @@ button:disabled {
 }
 
 /* The one filled control: play is what you reach for most. */
-.transport-group .play {
+.transport-set .play {
   min-inline-size: 84px;
   color: var(--on-primary);
   background: var(--rausch);
   border-color: var(--rausch);
 }
 
-.transport-group .play:hover:not(:disabled) {
+.transport-set .play:hover:not(:disabled) {
   background: var(--rausch-active);
   border-color: var(--rausch-active);
 }
 
-.transport-group .play:disabled {
+.transport-set .play:disabled {
   background: var(--rausch-disabled);
   border-color: var(--rausch-disabled);
   color: var(--on-primary);
@@ -336,6 +394,28 @@ button:disabled {
   margin-left: auto;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* Two rows of controls: moving and editing above, view and file below. */
+.transport + .transport {
+  margin-top: var(--space-sm);
+}
+
+.tips {
+  margin-top: var(--space-md);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.tips summary {
+  cursor: pointer;
+  inline-size: fit-content;
+  font-weight: 500;
+}
+
+.tips p {
+  margin: var(--space-sm) 0 0;
+  max-width: 72ch;
 }
 
 .readout b {
@@ -373,11 +453,10 @@ button:disabled {
   font: inherit;
   font-size: 16px;
   color: var(--ink);
-  background: var(--canvas);
-  border: 1px solid var(--hairline);
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline-soft);
   border-radius: var(--radius-full);
   padding: 14px 24px;
-  box-shadow: var(--shadow);
 }
 
 .agent-ask input::placeholder {
@@ -392,6 +471,15 @@ button:disabled {
 .agent-ask button {
   border-radius: var(--radius-full);
   padding: 10px 24px;
+}
+
+/* The sparkle is the one place the brand colour marks "this is the AI". */
+.agent-ask button .icon {
+  color: var(--rausch);
+}
+
+.agent-ask button:disabled .icon {
+  color: inherit;
 }
 
 /* A proposal is a held change, so it carries the brand colour rather than looking applied. */
@@ -464,6 +552,34 @@ button:disabled {
   transition:
     background-color 120ms ease,
     border-color 120ms ease;
+}
+
+/* In the empty viewer the import is the page's one call to action, so it is the filled button. */
+.import[data-variant='hero'] {
+  justify-content: center;
+}
+
+.import[data-variant='hero'] .import-label span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 14px 32px;
+  font-size: 16px;
+  color: var(--on-primary);
+  background: var(--rausch);
+  border-color: var(--rausch);
+  border-radius: var(--radius-md);
+}
+
+.import[data-variant='hero'] .import-label:hover span {
+  background: var(--rausch-active);
+  border-color: var(--rausch-active);
+}
+
+.import-label span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .import-label:hover span {

@@ -8,11 +8,14 @@
 
 import { useRef, useState } from 'react'
 import { copyFileToOpfs, type CopyProgress } from '../storage/opfs'
+import { Icon } from './Icons'
 
 export type ImportButtonProps = {
   /** Called with the OPFS name the copy actually used, which may differ from the file's own name. */
   onImported: (opfsName: string, file: File) => void | Promise<void>
   disabled?: boolean
+  /** `hero` is the large call to action in the empty viewer; `toolbar` sits among the controls. */
+  variant?: 'toolbar' | 'hero'
 }
 
 type State =
@@ -25,7 +28,7 @@ function percent({ copiedBytes, totalBytes }: CopyProgress): number {
   return Math.round((copiedBytes / totalBytes) * 100)
 }
 
-export function ImportButton({ onImported, disabled }: ImportButtonProps) {
+export function ImportButton({ onImported, disabled, variant = 'toolbar' }: ImportButtonProps) {
   const [state, setState] = useState<State>({ status: 'idle' })
   const inputRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -58,7 +61,7 @@ export function ImportButton({ onImported, disabled }: ImportButtonProps) {
   }
 
   return (
-    <div className="import">
+    <div className="import" data-variant={variant}>
       {/* A real input, visually hidden behind its own label: the native control prints "No file
           chosen" beside itself, which cannot be styled and reads as unfinished next to real buttons.
           The label keeps it clickable and focusable. */}
@@ -73,7 +76,10 @@ export function ImportButton({ onImported, disabled }: ImportButtonProps) {
             if (file) void handleFile(file)
           }}
         />
-        <span>Import video</span>
+        <span>
+          <Icon name="upload" />
+          Import video
+        </span>
       </label>
 
       {state.status === 'copying' && (

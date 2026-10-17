@@ -11,6 +11,7 @@ import type { Project } from '../editor/types'
 import { FfmpegUnavailableError, isExportSupported, loadFfmpeg } from '../media/ffmpeg'
 import { planExport } from '../media/exportPlan'
 import { runExport, type ExportProgress } from '../media/runExport'
+import { Icon } from './Icons'
 
 export type ExportButtonProps = {
   project: Project
@@ -88,6 +89,7 @@ export function ExportButton({ project, disabled }: ExportButtonProps) {
         disabled={disabled || busy || !isExportSupported()}
         title={isExportSupported() ? undefined : 'Export needs a cross-origin isolated page'}
       >
+        <Icon name="export" />
         {label(state)}
       </button>
 

@@ -13,6 +13,7 @@ import type { Waveform } from '../media/waveform'
 import type { CommandBus } from '../editor/history'
 import type { Project } from '../editor/types'
 import { PlanRejectedError, applyPlan, planToCommands } from './applyPlan'
+import { Icon } from '../ui/Icons'
 
 /**
  * Where the API lives.
@@ -196,6 +197,7 @@ export function AgentPanel({ bus, project, waveforms, disabled }: AgentPanelProp
           type="submit"
           disabled={disabled || state.status === 'thinking' || !instruction.trim()}
         >
+          <Icon name="sparkle" />
           {state.status === 'thinking' ? 'Thinking' : 'Suggest edit'}
         </button>
       </form>

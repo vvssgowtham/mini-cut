@@ -14,6 +14,7 @@ import type { Ms } from '../editor/types'
 import type { PlaybackStore } from '../media/playback'
 import type { PlayheadStore } from '../media/playhead'
 import { DISPLAY_FPS } from '../media/timecode'
+import { Icon } from './Icons'
 
 const FRAME_MS = Math.round(1000 / DISPLAY_FPS)
 
@@ -38,7 +39,7 @@ export function Transport({ playhead, playback, durationMs, disabled }: Transpor
   }
 
   return (
-    <div className="transport-group" role="group" aria-label="Transport">
+    <div className="transport-set" role="group" aria-label="Transport">
       <button
         type="button"
         className="play"
@@ -46,40 +47,47 @@ export function Transport({ playhead, playback, durationMs, disabled }: Transpor
         disabled={disabled}
         aria-pressed={isPlaying}
       >
+        <Icon name={isPlaying ? 'pause' : 'play'} />
         {isPlaying ? 'Pause' : 'Play'}
       </button>
-      <button
-        type="button"
-        onClick={() => playhead.set(0)}
-        disabled={disabled}
-        title="Go to start (Home)"
-      >
-        Start
-      </button>
-      <button
-        type="button"
-        onClick={() => step(-FRAME_MS)}
-        disabled={disabled}
-        title="Back one frame (left arrow)"
-      >
-        &minus;1 frame
-      </button>
-      <button
-        type="button"
-        onClick={() => step(FRAME_MS)}
-        disabled={disabled}
-        title="Forward one frame (right arrow)"
-      >
-        +1 frame
-      </button>
-      <button
-        type="button"
-        onClick={() => playhead.set(durationMs)}
-        disabled={disabled}
-        title="Go to end (End)"
-      >
-        End
-      </button>
+      <div className="transport-group">
+        <button
+          type="button"
+          onClick={() => playhead.set(0)}
+          disabled={disabled}
+          title="Go to start (Home)"
+        >
+          <Icon name="skipStart" />
+          Start
+        </button>
+        <button
+          type="button"
+          onClick={() => step(-FRAME_MS)}
+          disabled={disabled}
+          title="Back one frame (left arrow)"
+        >
+          <Icon name="arrowLeft" />
+          &minus;1 frame
+        </button>
+        <button
+          type="button"
+          onClick={() => step(FRAME_MS)}
+          disabled={disabled}
+          title="Forward one frame (right arrow)"
+        >
+          <Icon name="arrowRight" />
+          +1 frame
+        </button>
+        <button
+          type="button"
+          onClick={() => playhead.set(durationMs)}
+          disabled={disabled}
+          title="Go to end (End)"
+        >
+          <Icon name="skipEnd" />
+          End
+        </button>
+      </div>
     </div>
   )
 }

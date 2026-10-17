@@ -416,3 +416,30 @@ describe('ending a file that also reports a pause', () => {
     expect(play).toHaveBeenCalled()
   })
 })
+
+describe('empty viewer', () => {
+  const renderPlayer = (clips: Clip[], sources: Map<string, string>) =>
+    render(
+      <VideoPlayer
+        clips={clips}
+        sources={sources}
+        playhead={new PlayheadStore(0)}
+        playback={new PlaybackStore()}
+        empty={<p>Start here</p>}
+      />,
+    )
+
+  it('shows the invitation when there are no clips at all', () => {
+    const { queryByText } = renderPlayer([], new Map())
+
+    expect(queryByText('Start here')).not.toBeNull()
+  })
+
+  it('shows the missing-media fault, not the invitation, when a clip has lost its file', () => {
+    // The invitation would tell someone with a project to begin again; this is a fault to fix.
+    const { queryByText, getByRole } = renderPlayer([first], new Map())
+
+    expect(queryByText('Start here')).toBeNull()
+    expect(getByRole('alert').textContent).toMatch(/could not be opened/)
+  })
+})
